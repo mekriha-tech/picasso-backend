@@ -41,6 +41,11 @@ Multi-currency, shipping/logistics integration, artist payouts and commission ac
 5. On admin approve → `artist_status = 'approved'`, `artist_profiles` row created, and the three submitted works are created as `artworks` with `listing_type = 'display'` and `status = 'draft'` so the artist can list them.
 6. On reject → `artist_status = 'rejected'` with a reason; the user may reapply after 30 days.
 
+**Sessions**
+24. Refresh tokens rotate on every use, single-use. Presenting an already-rotated token means replay — revoke the whole token family, not just that token.
+25. Logout, password reset, email change and admin suspension all revoke server-side; a client-side cookie clear is not sufficient.
+26. Authorisation for any write is re-read from `users`, never taken from the access token's claims alone.
+
 **Artworks**
 7. Only the owning artist (or an admin) may mutate an artwork.
 8. `listing_type = 'sale'` requires `price > 0`. `listing_type = 'auction'` requires exactly one auction row in a non-terminal state. `listing_type = 'display'` must have no price and no open auction.
@@ -365,20 +370,71 @@ CREATE TABLE audit_log (
 
 **Note on `dimensions`:** the design shows free text ("36 x 34 inches"). Keep the display string, but also store `width_cm`/`height_cm` so size filtering is possible later without a migration and backfill.
 
+### 3.9 refresh_tokens — server-side session state
+
+Access tokens stay stateless JWTs (15 min, no DB hit). Refresh tokens are **opaque random strings with a database record**, because §4.1 requires rotation and revocation and a stateless JWT can do neither: minting a replacement does not stop the old one validating until its own `exp`, and there is no record to flag on logout. For a platform where a session can place binding bids and start payments, a logged-out or stolen token must stop working immediately.
+
+```sql
+CREATE TABLE refresh_tokens (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash      TEXT NOT NULL UNIQUE,    -- SHA-256 of the opaque token; never store the token
+  family_id       UUID NOT NULL,           -- constant across a rotation chain (one login = one family)
+  parent_id       UUID REFERENCES refresh_tokens(id) ON DELETE SET NULL,
+  expires_at      TIMESTAMPTZ NOT NULL,
+  revoked_at      TIMESTAMPTZ,
+  revoked_reason  TEXT,                    -- rotated | logout | reuse_detected | password_reset | admin
+  user_agent      TEXT,
+  ip_address      INET,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at    TIMESTAMPTZ
+);
+CREATE INDEX refresh_tokens_user_idx ON refresh_tokens(user_id)
+  WHERE revoked_at IS NULL;
+CREATE INDEX refresh_tokens_family_idx ON refresh_tokens(family_id);
+CREATE INDEX refresh_tokens_expiry_idx ON refresh_tokens(expires_at)
+  WHERE revoked_at IS NULL;
+```
+
+**Token format.** 32 bytes from `secrets.token_urlsafe`, not a JWT. Store only `sha256(token)`; compare with a constant-time digest match. Lifetime 7 days, sliding via rotation. Sent as an httpOnly, Secure, `SameSite=Lax` cookie scoped to `/api/v1/auth`.
+
+**Rotation with reuse detection** (rule 24 below):
+1. Look up `sha256(incoming)`. Not found, expired, or `revoked_at` set with reason `rotated` → the token was replayed. Revoke **the entire family** (`family_id`) and return 401 `session_revoked`; the client must log in again.
+2. Otherwise mark the row `revoked_at = now(), revoked_reason = 'rotated'`, insert a child row with the same `family_id` and `parent_id` pointing at it, and return a new access token plus the new cookie.
+3. Wrap steps 1–2 in one transaction with `SELECT ... FOR UPDATE` on the row — two parallel refreshes from the same client must not both succeed and mutually revoke the session.
+
+**Revocation triggers.** Every one of these writes `revoked_at`:
+
+| Event | Scope |
+| --- | --- |
+| `POST /auth/logout` | the presented token |
+| `POST /auth/logout-all` | every unrevoked token for the user |
+| Password reset completed | every token for the user |
+| Reuse detected | the whole `family_id` |
+| Admin suspends a user | every token for the user |
+| Email changed | every token for the user |
+
+**Cleanup.** A daily job deletes rows where `expires_at < now() - interval '30 days'`; keep the recent revoked ones so reuse detection and the session list still work.
+
+**Access-token staleness.** Because access tokens carry `artist_status` and `is_admin` as claims, a privilege change (artist approval, admin grant, suspension) does not take effect until the next refresh — at most 15 minutes. Acceptable for approval; **not** acceptable for suspension, so any endpoint that mutates money or listings re-reads the user row rather than trusting the claim. Simplest correct rule: **treat claims as a display hint, re-check authorisation from the database on every write.**
+
 ---
 
 ## 4. API — FastAPI routes
 
-Base path `/api/v1`. JSON only. Auth via short-lived JWT access token (15 min) + rotating refresh token in an httpOnly cookie. All list endpoints are cursor-paginated: `?limit=24&cursor=<opaque>` → `{ "items": [...], "next_cursor": "..." }`. Errors are RFC 7807 problem+json: `{ "type", "title", "status", "detail", "errors": {field: [msg]} }`.
+Base path `/api/v1`. JSON only. Auth via a stateless JWT access token (15 min, `Authorization: Bearer`) plus an opaque single-use refresh token backed by the `refresh_tokens` table (§3.9) in an httpOnly cookie. All list endpoints are cursor-paginated: `?limit=24&cursor=<opaque>` → `{ "items": [...], "next_cursor": "..." }`. Errors are RFC 7807 problem+json: `{ "type", "title", "status", "detail", "errors": {field: [msg]} }`.
 
 ### 4.1 Auth
 | Method | Path | Notes |
 | --- | --- | --- |
 | POST | `/auth/register` | `{email, password, full_name}` → user + tokens |
 | POST | `/auth/login` | `{email, password}` |
-| POST | `/auth/refresh` | Rotates refresh token |
-| POST | `/auth/logout` | Revokes refresh token |
-| POST | `/auth/password/forgot` · `/auth/password/reset` | Emailed token |
+| POST | `/auth/refresh` | Reads the httpOnly cookie. Rotates single-use per §3.9: revokes the presented token, issues a child in the same family. 401 `session_revoked` on replay (whole family revoked) or expiry |
+| POST | `/auth/logout` | Revokes the presented refresh token server-side and clears the cookie |
+| POST | `/auth/logout-all` | **Auth.** Revokes every unrevoked refresh token for the user |
+| GET | `/auth/sessions` | **Auth.** Active sessions from `refresh_tokens` (created, last used, user agent, IP) for the account Profile tab |
+| DELETE | `/auth/sessions/{id}` | **Auth.** Revoke one session |
+| POST | `/auth/password/forgot` · `/auth/password/reset` | Emailed single-use token; a completed reset revokes all refresh tokens |
 | GET | `/auth/me` | Current user incl. `artist_status`, `is_admin`, `artist_profile_id` — the front end gates `/studio` on this |
 
 ### 4.2 Public catalogue
@@ -490,12 +546,12 @@ Formatting stays on the client: INR `en-IN` with a `₹ ` prefix; countdown `Dd 
 
 ## 6. Non-functional requirements
 
-- **Security:** Argon2id password hashing, rate limits on `/auth/*` (10/min/IP) and bidding (30/min/user), signed webhook verification, presigned uploads restricted to `image/jpeg|png|webp` ≤ 15 MB, EXIF stripped. Never expose bidder emails.
+- **Security:** Argon2id password hashing, refresh-token rotation with reuse detection (§3.9), rate limits on `/auth/*` (10/min/IP) and bidding (30/min/user), signed webhook verification, presigned uploads restricted to `image/jpeg|png|webp` ≤ 15 MB, EXIF stripped. Never expose bidder emails.
 - **Concurrency:** bidding and fixed-price purchase both use row locks + unique partial indexes as the safety net (`one_live_order_per_artwork`, `bids_no_duplicate_amount`).
 - **Performance:** catalogue list p95 < 300 ms; bid placement p95 < 200 ms. Cache `/artworks/featured` and `/testimonials` for 60 s; never cache auction state.
 - **Images:** originals in S3/R2, served through a CDN with derived sizes (card 640w, detail 1600w) in AVIF/WebP.
 - **Observability:** structured JSON logs with request ids, Sentry, and an alert if `close_due_auctions` misses a cycle.
-- **Testing:** pytest + factory fixtures; required cases — concurrent equal bids (one wins), bid at exactly `min_next_bid` (accepted), bid 1 rupee under (rejected), auction closing under reserve (no order), double purchase of one artwork (second gets 409), webhook replay (idempotent), approval creating three draft artworks.
+- **Testing:** pytest + factory fixtures; required cases — concurrent equal bids (one wins), bid at exactly `min_next_bid` (accepted), bid 1 rupee under (rejected), auction closing under reserve (no order), double purchase of one artwork (second gets 409), webhook replay (idempotent), approval creating three draft artworks, replaying a rotated refresh token (whole family revoked), refresh after logout (401), two parallel refreshes (one wins, session survives).
 
 ---
 
