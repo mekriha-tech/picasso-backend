@@ -1,3 +1,5 @@
+import secrets
+import hashlib
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
 from jose import jwt
@@ -15,8 +17,12 @@ def create_access_token(subject: str) -> str:
     to_encode = {"exp": expire, "sub": str(subject), "type": "access"}
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
 
-def create_refresh_token(subject: str) -> str:
-    # Refresh token (e.g., 7 days)
-    expire = datetime.now(timezone.utc) + timedelta(days=7)
-    to_encode = {"exp": expire, "sub": str(subject), "type": "refresh"}
-    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
+# --- NEW OPAQUE TOKEN LOGIC ---
+
+def generate_opaque_token() -> str:
+    """Generates a 32-byte url-safe random string per PRD 3.9."""
+    return secrets.token_urlsafe(32)
+
+def hash_token(token: str) -> str:
+    """Returns the SHA-256 hash of the token for database storage."""
+    return hashlib.sha256(token.encode()).hexdigest()
