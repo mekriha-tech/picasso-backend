@@ -11,11 +11,19 @@ from app.models.user import User
 from app.models.refresh_token import RefreshToken
 from app.schemas.user import UserCreate, RegisterResponse
 from app.core.security import (
-    get_password_hash, 
-    create_access_token, 
-    generate_opaque_token, 
-    hash_token
+    get_password_hash,
+    create_access_token,
+    generate_opaque_token,
+    hash_token,
+    set_refresh_token_cookie,
+    clear_refresh_token_cookie,
+    REFRESH_TOKEN_TTL_DAYS,
 )
+
+# Concurrent /auth/refresh calls with the same cookie race on the row lock (see
+# refresh_token() below); if the rotated-parent was revoked moments ago and already
+# has a child in the same family, treat it as that benign race, not a replay.
+REUSE_GRACE_PERIOD = timedelta(seconds=10)
 
 router = APIRouter()
 
@@ -38,22 +46,24 @@ async def register_user(
         password_hash=get_password_hash(user_in.password) 
     )
     
-    # 3. Add to DB and handle race conditions
+    # 3. Add to DB and handle race conditions. Flush (not commit) so new_user.id
+    # is assigned but the row isn't durable yet - the refresh token below is
+    # inserted in the SAME transaction, so a failure here can't orphan a user
+    # with no way to obtain credentials.
     db.add(new_user)
     try:
-        await db.commit()
-        await db.refresh(new_user)
+        await db.flush()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=400, detail="Email already registered")
-    
+
     # 4. Generate Access Token (15 min JWT)
     access_token = create_access_token(subject=str(new_user.id))
-    
+
     # 5. Generate Opaque Refresh Token (7 days, stored hashed in DB)
     raw_refresh_token = generate_opaque_token()
-    token_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-    
+    token_expires_at = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_TTL_DAYS)
+
     db_refresh_token = RefreshToken(
         user_id=new_user.id,
         token_hash=hash_token(raw_refresh_token),
@@ -62,20 +72,14 @@ async def register_user(
         user_agent=request.headers.get("user-agent"),
         ip_address=request.client.host if request.client else None
     )
-    
+
     db.add(db_refresh_token)
     await db.commit()
-    
+    await db.refresh(new_user)
+
     # 6. Set httpOnly cookie for refresh token using the RAW token
-    response.set_cookie(
-        key="refresh_token",
-        value=raw_refresh_token,
-        httponly=True,
-        secure=False,  # Set to True in production!
-        samesite="lax",
-        max_age=7 * 24 * 60 * 60
-    )
-    
+    set_refresh_token_cookie(response, raw_refresh_token)
+
     return {
         "user": new_user,
         "access_token": access_token
@@ -107,6 +111,30 @@ async def refresh_token(
 
     # 2. Reuse Detection (The Replay Trap)
     if db_token.revoked_at:
+        # Two concurrent /refresh calls with the same cookie both block on the
+        # `SELECT ... FOR UPDATE` above for this row. Whichever commits first
+        # rotates it; the second then sees `revoked_at` already set here. That
+        # is a benign race (PRD §3.9 rule 3: "two simultaneous refreshes ...
+        # must not both succeed and mutually revoke the session"), not a
+        # replay attack - only treat it as reuse once the grace window during
+        # which a legitimate concurrent rotation could have happened has
+        # passed, or no matching child token exists.
+        now = datetime.now(timezone.utc)
+        if (
+            db_token.revoked_reason == "rotated"
+            and now - db_token.revoked_at <= REUSE_GRACE_PERIOD
+        ):
+            child_result = await db.execute(
+                select(RefreshToken).where(RefreshToken.parent_id == db_token.id)
+            )
+            child_token = child_result.scalars().first()
+            if child_token and not child_token.revoked_at:
+                # The other request already rotated this token and set the new
+                # cookie; just hand this caller a fresh access token for the
+                # same session instead of tearing the family down.
+                access_token = create_access_token(subject=str(child_token.user_id))
+                return {"access_token": access_token}
+
         await db.execute(
             update(RefreshToken)
             .where(RefreshToken.family_id == db_token.family_id)
@@ -129,21 +157,18 @@ async def refresh_token(
         token_hash=hash_token(new_raw_token),
         family_id=db_token.family_id,
         parent_id=db_token.id,
-        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_TTL_DAYS),
         user_agent=request.headers.get("user-agent"),
         ip_address=request.client.host if request.client else None
     )
-    
+
     db.add(new_db_token)
     await db.commit()
 
     # 4. Issue new tokens
     access_token = create_access_token(subject=str(db_token.user_id))
-    response.set_cookie(
-        key="refresh_token", value=new_raw_token, httponly=True, 
-        secure=False, samesite="lax", max_age=7 * 24 * 60 * 60
-    )
-    
+    set_refresh_token_cookie(response, new_raw_token)
+
     return {"access_token": access_token}
 
 
@@ -161,8 +186,8 @@ async def logout(
             .values(revoked_at=func.now(), revoked_reason="logout")
         )
         await db.commit()
-        
-    response.delete_cookie("refresh_token")
+
+    clear_refresh_token_cookie(response)
     return {"detail": "Logged out successfully"}
 
 @router.post("/logout-all")
@@ -188,8 +213,8 @@ async def logout_all(
                 .values(revoked_at=func.now(), revoked_reason="logout_all")
             )
             await db.commit()
-            
-    response.delete_cookie("refresh_token")
+
+    clear_refresh_token_cookie(response)
     return {"detail": "Logged out of all devices successfully"}
 
 
