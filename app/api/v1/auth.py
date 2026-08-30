@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db.session import get_db
 from app.models.user import User
 from app.models.refresh_token import RefreshToken
-from app.schemas.user import UserCreate, RegisterResponse
+from app.schemas.user import UserCreate, RegisterResponse, EmailCheckRequest, EmailCheckResponse
 from app.core.security import (
     get_password_hash,
     create_access_token,
@@ -258,3 +258,15 @@ async def get_active_sessions(
             for session in active_sessions
         ]
     }
+
+@router.post("/check-email", response_model=EmailCheckResponse)
+async def check_email_exists(
+    payload: EmailCheckRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    # Query the database to see if a user with this email already exists
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalars().first()
+    
+    # Return true if user exists, false if they don't
+    return {"exists": user is not None}
