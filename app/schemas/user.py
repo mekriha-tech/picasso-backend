@@ -29,3 +29,19 @@ class EmailCheckRequest(BaseModel):
 
 class EmailCheckResponse(BaseModel):
     exists: bool
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class MeResponse(BaseModel):
+    id: uuid.UUID
+    email: str
+    full_name: str
+    avatar_url: str | None
+    is_admin: bool
+    artist_status: str
+    # artist_profiles doesn't exist yet - always null until that table lands
+    artist_profile_id: uuid.UUID | None = None
