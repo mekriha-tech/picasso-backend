@@ -6,12 +6,21 @@ from sqlalchemy import select, update
 from sqlalchemy.sql import func
 from sqlalchemy.exc import IntegrityError
 
+from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.models.refresh_token import RefreshToken
-from app.schemas.user import UserCreate, RegisterResponse, EmailCheckRequest, EmailCheckResponse
+from app.schemas.user import (
+    UserCreate,
+    RegisterResponse,
+    EmailCheckRequest,
+    EmailCheckResponse,
+    LoginRequest,
+    MeResponse,
+)
 from app.core.security import (
     get_password_hash,
+    verify_password,
     create_access_token,
     generate_opaque_token,
     hash_token,
@@ -26,6 +35,25 @@ from app.core.security import (
 REUSE_GRACE_PERIOD = timedelta(seconds=10)
 
 router = APIRouter()
+
+
+def _new_refresh_token_row(user_id: uuid.UUID, request: Request) -> tuple[str, RefreshToken]:
+    """Builds a fresh, unsaved RefreshToken row (new session/family) plus its raw token.
+
+    Shared by /register and /login so both start a session identically; the
+    caller is responsible for db.add()-ing the row and committing it.
+    """
+    raw_token = generate_opaque_token()
+    db_token = RefreshToken(
+        user_id=user_id,
+        token_hash=hash_token(raw_token),
+        family_id=uuid.uuid4(),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_TTL_DAYS),
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
+    return raw_token, db_token
+
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(
@@ -61,18 +89,7 @@ async def register_user(
     access_token = create_access_token(subject=str(new_user.id))
 
     # 5. Generate Opaque Refresh Token (7 days, stored hashed in DB)
-    raw_refresh_token = generate_opaque_token()
-    token_expires_at = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_TTL_DAYS)
-
-    db_refresh_token = RefreshToken(
-        user_id=new_user.id,
-        token_hash=hash_token(raw_refresh_token),
-        family_id=uuid.uuid4(),
-        expires_at=token_expires_at,
-        user_agent=request.headers.get("user-agent"),
-        ip_address=request.client.host if request.client else None
-    )
-
+    raw_refresh_token, db_refresh_token = _new_refresh_token_row(new_user.id, request)
     db.add(db_refresh_token)
     await db.commit()
     await db.refresh(new_user)
@@ -83,6 +100,55 @@ async def register_user(
     return {
         "user": new_user,
         "access_token": access_token
+    }
+
+
+@router.post("/login", response_model=RegisterResponse)
+async def login(
+    credentials: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(User).where(User.email == credentials.email))
+    user = result.scalars().first()
+
+    # Same generic error whether the email is unknown or the password is
+    # wrong, and whether the account has no password at all (OAuth-only,
+    # per PRD §3.2's note that password_hash is nullable) - don't let a
+    # timing/response difference reveal which case it was.
+    invalid_credentials = HTTPException(status_code=401, detail="Invalid email or password")
+    if not user or not user.password_hash:
+        raise invalid_credentials
+    if not verify_password(credentials.password, user.password_hash):
+        raise invalid_credentials
+
+    access_token = create_access_token(subject=str(user.id))
+    raw_refresh_token, db_refresh_token = _new_refresh_token_row(user.id, request)
+    db.add(db_refresh_token)
+
+    user.last_login_at = func.now()
+    await db.commit()
+    await db.refresh(user)
+
+    set_refresh_token_cookie(response, raw_refresh_token)
+
+    return {
+        "user": user,
+        "access_token": access_token
+    }
+
+
+@router.get("/me", response_model=MeResponse)
+async def get_me(current_user: User = Depends(get_current_user)):
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "full_name": current_user.full_name,
+        "avatar_url": current_user.avatar_url,
+        "is_admin": current_user.is_admin,
+        "artist_status": current_user.artist_status,
+        "artist_profile_id": None,
     }
 
 
@@ -193,26 +259,16 @@ async def logout(
 @router.post("/logout-all")
 async def logout_all(
     response: Response,
-    refresh_token: str | None = Cookie(default=None),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    if refresh_token:
-        hashed_token = hash_token(refresh_token)
-        # 1. Find who is making the request
-        result = await db.execute(
-            select(RefreshToken).where(RefreshToken.token_hash == hashed_token)
-        )
-        current_token = result.scalars().first()
-
-        if current_token:
-            # 2. Revoke EVERY active token for this user
-            await db.execute(
-                update(RefreshToken)
-                .where(RefreshToken.user_id == current_token.user_id)
-                .where(RefreshToken.revoked_at.is_(None))
-                .values(revoked_at=func.now(), revoked_reason="logout_all")
-            )
-            await db.commit()
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == current_user.id)
+        .where(RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=func.now(), revoked_reason="logout_all")
+    )
+    await db.commit()
 
     clear_refresh_token_cookie(response)
     return {"detail": "Logged out of all devices successfully"}
@@ -220,31 +276,25 @@ async def logout_all(
 
 @router.get("/sessions")
 async def get_active_sessions(
+    current_user: User = Depends(get_current_user),
     refresh_token: str | None = Cookie(default=None),
     db: AsyncSession = Depends(get_db)
 ):
-    if not refresh_token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-        
-    hashed_token = hash_token(refresh_token)
-    result = await db.execute(
-        select(RefreshToken).where(RefreshToken.token_hash == hashed_token)
-    )
-    current_token = result.scalars().first()
-    
-    if not current_token or current_token.revoked_at:
-        raise HTTPException(status_code=401, detail="Session expired or invalid")
-        
-    # Fetch all active sessions for this user per PRD 4.1
+    # The access token (Bearer) is what authenticates this request per PRD
+    # §4.1; the refresh cookie is read only, best-effort, to flag which row
+    # is *this* browser's own session - its absence (e.g. a non-browser API
+    # client) just means no item comes back with is_current=true.
+    current_hash = hash_token(refresh_token) if refresh_token else None
+
     sessions_result = await db.execute(
         select(RefreshToken)
-        .where(RefreshToken.user_id == current_token.user_id)
+        .where(RefreshToken.user_id == current_user.id)
         .where(RefreshToken.revoked_at.is_(None))
         .order_by(RefreshToken.created_at.desc())
     )
-    
+
     active_sessions = sessions_result.scalars().all()
-    
+
     return {
         "items": [
             {
@@ -253,11 +303,32 @@ async def get_active_sessions(
                 "last_used_at": session.last_used_at or session.created_at,
                 "user_agent": session.user_agent,
                 "ip_address": str(session.ip_address) if session.ip_address else None,
-                "is_current": session.id == current_token.id
+                "is_current": current_hash is not None and session.token_hash == current_hash,
             }
             for session in active_sessions
         ]
     }
+
+
+@router.delete("/sessions/{session_id}")
+async def revoke_session(
+    session_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.id == session_id)
+        .where(RefreshToken.user_id == current_user.id)
+        .where(RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=func.now(), revoked_reason="user_revoked")
+    )
+    await db.commit()
+
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {"detail": "Session revoked"}
 
 @router.post("/check-email", response_model=EmailCheckResponse)
 async def check_email_exists(

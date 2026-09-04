@@ -3,7 +3,7 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
 from fastapi import Response
-from jose import jwt
+from jose import jwt, JWTError
 from app.core.config import settings
 
 # Argon2id password hashing exactly as requested in PRD
@@ -12,11 +12,24 @@ pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
+def verify_password(plain_password: str, password_hash: str) -> bool:
+    return pwd_context.verify(plain_password, password_hash)
+
 def create_access_token(subject: str) -> str:
     # Short-lived access token (15 min)
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode = {"exp": expire, "sub": str(subject), "type": "access"}
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
+
+def decode_access_token(token: str) -> str | None:
+    """Returns the subject (user id) claim if `token` is a valid, unexpired access token."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+    except JWTError:
+        return None
+    if payload.get("type") != "access":
+        return None
+    return payload.get("sub")
 
 # --- NEW OPAQUE TOKEN LOGIC ---
 
