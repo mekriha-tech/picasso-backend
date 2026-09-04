@@ -1,8 +1,8 @@
 import enum
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Text, Boolean, DateTime, func, Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Text, Boolean, DateTime, func, Enum as SQLEnum, text
+from sqlalchemy.dialects.postgresql import UUID, CITEXT
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.session import Base
 
@@ -16,8 +16,16 @@ class ArtistStatus(str, enum.Enum):
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    # Updated: Added database-level gen_random_uuid() default
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), 
+        primary_key=True, 
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()")
+    )
+    
+    # Updated: Changed String to CITEXT to make emails case-insensitive
+    email: Mapped[str] = mapped_column(CITEXT, unique=True, nullable=False, index=True)
     password_hash: Mapped[str | None] = mapped_column(Text)
     full_name: Mapped[str] = mapped_column(Text, nullable=False)
     avatar_url: Mapped[str | None] = mapped_column(Text)
@@ -25,10 +33,13 @@ class User(Base):
     phone: Mapped[str | None] = mapped_column(Text)
     
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    
+    # Updated: Added index=True per PRD 3.2 requirements
     artist_status: Mapped[ArtistStatus] = mapped_column(
         SQLEnum(ArtistStatus, name="artist_status"), 
         default=ArtistStatus.none, 
-        server_default="none"
+        server_default="none",
+        index=True
     )
     
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

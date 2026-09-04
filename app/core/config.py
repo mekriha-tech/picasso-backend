@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
 
+    # Refresh-token cookie must be Secure everywhere except local dev (PRD §3.9)
+    @computed_field
+    @property
+    def cookie_secure(self) -> bool:
+        return self.ENVIRONMENT != "development"
+
     # This dynamically builds the connection string SQLAlchemy needs
     @computed_field
     @property
