@@ -1,9 +1,11 @@
 import uuid
 from decimal import Decimal, InvalidOperation
+from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.models.artwork import ListingType
 from app.schemas.catalogue import (
     ArtistDetailOut,
     ArtworkDetailOut,
@@ -16,16 +18,18 @@ from app.services.catalogue import InvalidCursorError
 
 router = APIRouter()
 
+SortOption = Literal["newest", "price_asc", "price_desc", "ending_soon"]
+
 
 @router.get("/artworks", response_model=PaginatedArtworksOut)
 async def list_artworks_route(
-    listing_type: str | None = Query(default=None),
+    listing_type: ListingType | None = Query(default=None),
     category: str | None = Query(default=None),
     artist_id: uuid.UUID | None = Query(default=None),
     min_price: str | None = Query(default=None),
     max_price: str | None = Query(default=None),
     q: str | None = Query(default=None),
-    sort: str = Query(default="newest"),
+    sort: SortOption = Query(default="newest"),
     limit: int = Query(default=24, ge=1, le=100),
     cursor: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
@@ -34,6 +38,11 @@ async def list_artworks_route(
         min_price_dec = Decimal(min_price) if min_price is not None else None
         max_price_dec = Decimal(max_price) if max_price is not None else None
     except InvalidOperation:
+        raise HTTPException(status_code=400, detail="min_price/max_price must be numeric")
+
+    if min_price_dec is not None and not min_price_dec.is_finite():
+        raise HTTPException(status_code=400, detail="min_price/max_price must be numeric")
+    if max_price_dec is not None and not max_price_dec.is_finite():
         raise HTTPException(status_code=400, detail="min_price/max_price must be numeric")
 
     try:

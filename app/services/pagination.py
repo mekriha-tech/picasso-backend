@@ -21,6 +21,8 @@ def decode_cursor(cursor: str) -> tuple[str, uuid.UUID] | None:
     """Returns (sort_value_as_string, row_id), or None if the cursor is malformed in any way."""
     try:
         payload = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
+        if not isinstance(payload["v"], str):
+            return None
         return payload["v"], uuid.UUID(payload["id"])
     except Exception:
         return None

@@ -15,6 +15,13 @@ class ArtworkNotPublishableError(Exception):
     pass
 
 
+PUBLIC_ARTWORK_STATUSES = {
+    ArtworkStatus.published.value,
+    ArtworkStatus.reserved.value,
+    ArtworkStatus.sold.value,
+}
+
+
 async def list_artworks(
     db: AsyncSession, status: ArtworkStatus | str | None = None
 ) -> list[tuple[Artwork, str]]:
@@ -39,7 +46,7 @@ async def set_artwork_status(db: AsyncSession, artwork: Artwork, new_status: str
     if new_status not in valid_statuses:
         raise InvalidArtworkStatusError(f"'{new_status}' is not a valid artwork status.")
 
-    if new_status == ArtworkStatus.published.value:
+    if new_status in PUBLIC_ARTWORK_STATUSES:
         if not artwork.title or not artwork.year or not artwork.medium:
             raise ArtworkNotPublishableError(
                 "Artwork needs a title, year, and medium before it can be published."
@@ -53,7 +60,7 @@ async def set_artwork_status(db: AsyncSession, artwork: Artwork, new_status: str
             )
 
     artwork.status = ArtworkStatus(new_status)
-    if new_status == ArtworkStatus.published.value and artwork.published_at is None:
+    if new_status in PUBLIC_ARTWORK_STATUSES and artwork.published_at is None:
         artwork.published_at = func.now()
     await db.commit()
     await db.refresh(artwork)

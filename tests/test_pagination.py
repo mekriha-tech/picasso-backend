@@ -45,3 +45,10 @@ def test_decode_rejects_invalid_uuid():
         json.dumps({"v": "x", "id": "not-a-uuid"}).encode()
     ).decode()
     assert decode_cursor(payload) is None
+
+
+def test_decode_rejects_non_string_value():
+    import base64
+    import json
+    payload = base64.urlsafe_b64encode(json.dumps({"v": None, "id": str(uuid.uuid4())}).encode()).decode()
+    assert decode_cursor(payload) is None

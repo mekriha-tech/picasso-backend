@@ -106,7 +106,10 @@ async def list_public_artworks(
                 or_(sort_col > cursor_value, and_(sort_col == cursor_value, Artwork.id > cursor_id))
             )
 
-    order = sort_col.desc() if descending else sort_col.asc()
+    if sort_col is Artwork.published_at:
+        order = sort_col.desc().nullslast() if descending else sort_col.asc().nullslast()
+    else:
+        order = sort_col.desc() if descending else sort_col.asc()
     id_order = Artwork.id.desc() if descending else Artwork.id.asc()
     query = query.order_by(order, id_order).limit(limit + 1)
 
@@ -180,7 +183,7 @@ async def get_featured_artworks(db: AsyncSession) -> dict:
             .join(ArtistProfile, Artwork.artist_id == ArtistProfile.id)
             .where(Artwork.status.in_(PUBLIC_STATUSES))
             .where(Artwork.listing_type == lt)
-            .order_by(Artwork.published_at.desc())
+            .order_by(Artwork.published_at.desc().nullslast())
             .limit(3)
         )
         rows = (await db.execute(query)).all()
@@ -235,7 +238,8 @@ async def list_artists(
     next_cursor = None
     if has_more and rows:
         last = rows[-1]
-        next_cursor = encode_cursor(last.approved_at, last.id)
+        if last.approved_at is not None:
+            next_cursor = encode_cursor(last.approved_at, last.id)
 
     return items, next_cursor
 
@@ -252,7 +256,7 @@ async def get_artist_by_slug(db: AsyncSession, slug: str) -> dict | None:
         .join(ArtistProfile, Artwork.artist_id == ArtistProfile.id)
         .where(Artwork.artist_id == artist.id)
         .where(Artwork.status.in_(PUBLIC_STATUSES))
-        .order_by(Artwork.published_at.desc())
+        .order_by(Artwork.published_at.desc().nullslast())
     )
     rows = (await db.execute(works_query)).all()
     works = [_artwork_card_dict(a, s, n) for a, s, n in rows]
