@@ -1,6 +1,10 @@
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from starlette.middleware.sessions import SessionMiddleware
 from app.core.config import settings
 from app.api.v1 import auth, artist_applications, admin
+from app.admin_panel.auth import AdminAuthRequired
+from app.admin_panel import login_routes
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -8,11 +12,26 @@ app = FastAPI(
     docs_url=f"{settings.API_V1_PREFIX}/docs",
 )
 
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SECRET_KEY,
+    session_cookie="admin_session",
+    path="/admin",
+    https_only=settings.cookie_secure,
+)
+
+
+@app.exception_handler(AdminAuthRequired)
+async def admin_auth_required_handler(request, exc):
+    return RedirectResponse(url="/admin/login", status_code=303)
+
+
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX + "/auth", tags=["Auth"])
 app.include_router(
     artist_applications.router, prefix=settings.API_V1_PREFIX, tags=["Artist Application"]
 )
 app.include_router(admin.router, prefix=settings.API_V1_PREFIX, tags=["Admin"])
+app.include_router(login_routes.router, prefix="/admin", tags=["Admin Panel"])
 
 @app.get("/health", tags=["Health"])
 async def health_check():
