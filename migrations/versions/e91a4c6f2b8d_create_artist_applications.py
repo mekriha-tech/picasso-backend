@@ -23,6 +23,10 @@ def upgrade() -> None:
         name='application_status',
     )
     application_status.create(op.get_bind(), checkfirst=True)
+    # Prevent op.create_table() below from trying to auto-create this enum a
+    # second time (its own table-creation DDL runs with checkfirst=False,
+    # which turns that redundant attempt into a fatal DuplicateObjectError).
+    application_status.create_type = False
 
     op.create_table(
         'artist_applications',

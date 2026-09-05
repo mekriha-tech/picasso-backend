@@ -24,6 +24,11 @@ def upgrade() -> None:
         'draft', 'published', 'reserved', 'sold', 'unlisted', 'removed', name='artwork_status',
     )
     artwork_status.create(op.get_bind(), checkfirst=True)
+    # Prevent op.create_table() below from trying to auto-create these enums a
+    # second time (its own table-creation DDL runs with checkfirst=False,
+    # which turns that redundant attempt into a fatal DuplicateObjectError).
+    listing_type.create_type = False
+    artwork_status.create_type = False
 
     op.create_table(
         'artworks',
