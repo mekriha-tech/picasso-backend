@@ -216,7 +216,7 @@ async def list_artists(
         raw_value, cursor_id = decoded
         try:
             cursor_value = datetime.fromisoformat(raw_value)
-        except ValueError:
+        except (ValueError, TypeError):
             raise InvalidCursorError("Invalid cursor")
         query = query.where(
             or_(
