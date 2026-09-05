@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Artworks{% endblock %}
+{% block body %}
+  <nav>
+    <a href="/admin/applications">Applications</a><a href="/admin/artworks">Artworks</a>
+    <form class="inline" method="post" action="/admin/logout"><button type="submit">Log out</button></form>
+  </nav>
+  <h1>Artworks</h1>
+  <form method="get">
+    <select name="status" onchange="this.form.submit()">
+      <option value="">All statuses</option>
+      {% for s in statuses %}
+        <option value="{{ s }}" {% if current_status == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <table>
+    <tr><th>Title</th><th>Listing type</th><th>Status</th><th>Change status</th></tr>
+    {% for artwork in artworks %}
+      <tr>
+        <td>{{ artwork.title }}</td>
+        <td>{{ artwork.listing_type.value }}</td>
+        <td><span class="badge">{{ artwork.status.value }}</span></td>
+        <td>
+          <form class="inline" method="post" action="/admin/artworks/{{ artwork.id }}/status">
+            <select name="new_status">
+              {% for s in statuses %}
+                <option value="{{ s }}" {% if artwork.status.value == s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit">Update</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+  </table>
+{% endblock %}
