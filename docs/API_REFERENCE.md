@@ -1,6 +1,8 @@
 # Picasso Backend — API Reference (for frontend integration)
 
-**Last verified against:** `main` @ `60dca6b` (2026-09-05)
+**Last verified against:** `main` @ `e87f935` (2026-09-05) — cross-checked against the live
+deployment via a full smoke test (register → login → apply → submit → admin approve/reject →
+artwork status change), not just read off the code.
 **Live environment:** https://picasso-backend-production.up.railway.app
 **Base path:** `/api/v1` (health check is the one exception, at root `/health`)
 **Full spec of record:** [`docs/PRD.md`](./PRD.md) — this document is a snapshot of *what's actually
@@ -13,23 +15,23 @@ Status legend: ✅ implemented & deployed · 🚧 not built yet · ⚠️ implem
 
 ## 1. What's live right now
 
-Auth, the artist-application submission flow, and the admin approval flow (JSON + an HTML admin
-panel) exist. There is no catalogue browsing, auction, order, wishlist, exhibition, or
-notification model/endpoint in the codebase yet.
+Auth (including login), the artist-application submission flow, and the admin approval flow
+(JSON + an HTML admin panel) all exist and are deployed. There is still no catalogue browsing,
+auction, order, wishlist, exhibition, or notification model/endpoint in the codebase.
 
 | Method | Path | Status |
 | --- | --- | --- |
 | POST | `/api/v1/auth/register` | ✅ |
+| POST | `/api/v1/auth/login` | ✅ |
+| GET | `/api/v1/auth/me` | ✅ |
 | POST | `/api/v1/auth/refresh` | ✅ |
 | POST | `/api/v1/auth/logout` | ✅ |
 | POST | `/api/v1/auth/logout-all` | ✅ |
 | GET | `/api/v1/auth/sessions` | ✅ |
+| DELETE | `/api/v1/auth/sessions/{id}` | ✅ |
 | POST | `/api/v1/auth/check-email` | ✅ (not in PRD — added for frontend form validation) |
 | GET | `/health` | ✅ |
-| **POST** | **`/api/v1/auth/login`** | 🚧 **not built — see §3** |
-| GET | `/api/v1/auth/me` | 🚧 not built |
-| DELETE | `/api/v1/auth/sessions/{id}` | 🚧 not built |
-| POST | `/api/v1/auth/password/forgot` · `/reset` | 🚧 not built |
+| POST | `/api/v1/auth/password/forgot` · `/reset` | 🚧 not built — needs an email-provider decision first |
 | GET / POST | `/api/v1/me/artist-application` | ✅ (see §3) |
 | PUT / DELETE | `/api/v1/me/artist-application/works/{slot}` | ✅ (see §3) |
 | POST | `/api/v1/me/artist-application/submit` | ✅ (see §3) |
@@ -40,9 +42,11 @@ notification model/endpoint in the codebase yet.
 | GET/POST | `/admin/*` (HTML admin panel, not part of the JSON API) | ✅ (see §3) |
 | *everything else in PRD §4.2–§4.9* | catalogue browsing, auctions, orders, studio | 🚧 not built |
 
-**If you were told login exists — it doesn't yet.** Registration issues you a working access
-token + refresh cookie immediately, so you can build/test the logged-in UI against `/register`
-in the meantime, but there is no way to log an *existing* user back in yet.
+Login is real now: `POST /auth/login` with `{email, password}` returns the same shape as
+`/register` (user + access token + refresh cookie). `GET /auth/me` returns the current user
+including `artist_status`, `is_admin`, and `artist_profile_id` (currently always `null` — no
+`artist_profiles` join wired into that response yet, even though the table exists post-approval;
+worth a small follow-up).
 
 ---
 
@@ -60,13 +64,13 @@ in the meantime, but there is no way to log an *existing* user back in yet.
   login. **Two refresh calls fired back-to-back with the same cookie is fine** — the server
   detects that specific race and just re-issues a fresh access token instead of killing the
   session.
-- ⚠️ **Bearer-token verification isn't wired up anywhere yet.** There is no
-  `get_current_user`-style dependency in the codebase. `GET /auth/sessions` and
-  `POST /auth/logout-all` currently authenticate off the **refresh-token cookie**, not the
-  access token, even though PRD §4.1 marks them **Auth.** (implying Bearer). Every future
-  protected endpoint (studio, admin, bidding, checkout, wishlist, `/me/*`) needs real
-  Bearer-token verification added before it can be built — this is effectively a blocking
-  prerequisite, not a nice-to-have (see §4, Phase 1).
+- **Bearer-token verification is wired up** via `get_current_user` (`app/api/deps.py`) — decodes
+  the JWT and re-reads the user row from the DB on every request (PRD rule 26: never trust a
+  cached claim). `get_current_admin_user` builds on it, additionally requiring `is_admin = true`,
+  and gates every `/admin/*` JSON route. `GET /auth/sessions` and `POST /auth/logout-all` both use
+  it now (a change from an earlier draft of this doc, back when they still read the refresh-token
+  cookie) — `/sessions` also reads the cookie, but only best-effort, to flag which row is *this*
+  browser's own session (`is_current`).
 
 ### Error shape ⚠️
 
@@ -104,6 +108,33 @@ frontend error-handling layer gets too invested in one shape or the other.
 - ⚠️ No password strength validation, no email format validation beyond Pydantic's `str` (not
   `EmailStr`) — anything non-empty is accepted server-side right now.
 
+### `POST /api/v1/auth/login`
+
+```jsonc
+// Request
+{ "email": "a@b.com", "password": "string" }
+```
+- `200` → same shape as `/register`'s `201` (user + `access_token` + `token_type`), sets the
+  `refresh_token` cookie.
+- `401` → `{"detail": "Invalid email or password"}` — deliberately identical whether the email is
+  unknown, the password is wrong, or the account has no password at all (OAuth-only). None of
+  those cases are distinguishable from the response, on purpose.
+
+### `GET /api/v1/auth/me`
+
+Requires `Authorization: Bearer <access_token>`.
+- `200` →
+  ```jsonc
+  { "id": "uuid", "email": "a@b.com", "full_name": "string", "avatar_url": null,
+    "is_admin": false, "artist_status": "none", "artist_profile_id": null }
+  ```
+  `artist_status` is one of `none` / `pending` / `approved` / `rejected` (see the artist
+  application flow below). `artist_profile_id` is currently **always `null`** — it isn't
+  populated from the `artist_profiles` table yet even after approval, though that table exists
+  and gets a row created on approval (§3, admin review queue). Small known gap, not a bug in the
+  approval flow itself — just an unwired field on this response.
+- `401` → `{"detail": "Not authenticated"}` (missing/invalid/expired token)
+
 ### `POST /api/v1/auth/refresh`
 
 No body. Reads the `refresh_token` cookie.
@@ -119,12 +150,16 @@ No body. Reads the `refresh_token` cookie (no-op if absent).
 
 ### `POST /api/v1/auth/logout-all`
 
-No body. ⚠️ Authenticates via the `refresh_token` cookie (see §2 caveat).
+Requires `Authorization: Bearer <access_token>`. Revokes every refresh-token session for the
+current user.
 - `200` → `{"detail": "Logged out of all devices successfully"}`
+- `401` → `{"detail": "Not authenticated"}`
 
 ### `GET /api/v1/auth/sessions`
 
-⚠️ Authenticates via the `refresh_token` cookie (see §2 caveat).
+Requires `Authorization: Bearer <access_token>`. Also reads the `refresh_token` cookie, if
+present, purely to flag which row is *this* browser's own session — the cookie is not what
+authenticates the request.
 - `200` →
   ```jsonc
   { "items": [
@@ -132,7 +167,16 @@ No body. ⚠️ Authenticates via the `refresh_token` cookie (see §2 caveat).
       "user_agent": "...", "ip_address": "1.2.3.4", "is_current": true }
   ] }
   ```
-- `401` → `{"detail": "Not authenticated"}` / `{"detail": "Session expired or invalid"}`
+- `401` → `{"detail": "Not authenticated"}`
+
+### `DELETE /api/v1/auth/sessions/{id}`
+
+Requires `Authorization: Bearer <access_token>`. Revokes one of the caller's own sessions by its
+`id` (from the list above).
+- `200` → `{"detail": "Session revoked"}`
+- `404` → `{"detail": "Session not found"}` (wrong id, already revoked, or belongs to someone
+  else — all three look identical on purpose, so this can't be used to probe other users' session
+  ids)
 
 ### `POST /api/v1/auth/check-email`
 
@@ -327,27 +371,28 @@ from the JSON API above:
 Ordered so that nothing blocks on something later in the list. Roughly follows PRD §7, adjusted
 for what's actually done and for the Bearer-auth gap above.
 
-### Phase 1 — Finish auth (blocks everything else)
-1. `get_current_user` dependency: verify the `Authorization: Bearer` JWT, re-read `is_admin` /
-   `artist_status` from `users` on every write per PRD rule 26 (never trust stale claims).
-2. `POST /auth/login`
-3. `GET /auth/me`
-4. Switch `/auth/sessions` and `/auth/logout-all` onto the new Bearer dependency instead of the
-   refresh cookie (or confirm cookie-based is intentional — see the open question in the PR #1
-   review).
-5. `DELETE /auth/sessions/{id}`
-6. `POST /auth/password/forgot` / `/reset`
-7. Fix the error envelope to match PRD §4's RFC 7807 shape (or update PRD if the team decides
+### Phase 1 — Finish auth ✅ done except password reset
+1. ✅ `get_current_user` dependency: verifies the `Authorization: Bearer` JWT, re-reads `is_admin`
+   / `artist_status` from `users` on every request per PRD rule 26 (never trust stale claims).
+2. ✅ `POST /auth/login`
+3. ✅ `GET /auth/me`
+4. ✅ `/auth/sessions` and `/auth/logout-all` now use the Bearer dependency.
+5. ✅ `DELETE /auth/sessions/{id}`
+6. 🚧 `POST /auth/password/forgot` / `/reset` — still needs an email-provider decision first.
+7. 🚧 Fix the error envelope to match PRD §4's RFC 7807 shape (or update PRD if the team decides
    the current shape is fine) — do this **before** the frontend builds its error-handling layer.
+   Still not done; see the Error shape note in §2.
 
-### Phase 2 — Artist identity + artwork core
-8. `artist_profiles`, `artworks`, `artwork_images` tables (PRD §3.3, §3.5)
-9. Public catalogue: `GET /artworks`, `/artworks/{slug}`, `/artworks/featured`, `/artists`,
-   `/artists/{slug}` — home/explore/detail pages can go live against real data here
-10. `artist_applications` + `application_works` tables (PRD §3.4); `/me/artist-application*`
+### Phase 2 — Artist identity + artwork core ✅ mostly done
+8. ✅ `artist_profiles`, `artworks`, `artwork_images` tables (PRD §3.3, §3.5)
+9. 🚧 Public catalogue: `GET /artworks`, `/artworks/{slug}`, `/artworks/featured`, `/artists`,
+   `/artists/{slug}` — **not built** — home/explore/detail pages have nothing to point at yet.
+   This is now the single biggest gap blocking real frontend work beyond auth and the apply flow.
+10. ✅ `artist_applications` + `application_works` tables (PRD §3.4); `/me/artist-application*`
     endpoints (rules 1–3)
-11. Admin review queue: `/admin/applications*` (rule 5–6, including the three-draft-artwork
-    creation on approval)
+11. ✅ Admin review queue: `/admin/applications*` (rule 5–6, including the three-draft-artwork
+    creation on approval) plus a session-cookie HTML admin panel at `/admin/*` (not in the
+    original PRD, added for operational convenience) covering the same actions.
 
 ### Phase 3 — Studio
 12. `/studio/artworks` CRUD, `/publish`, `/unlist`, listing-type rules 8–9
@@ -374,12 +419,21 @@ for what's actually done and for the Bearer-auth gap above.
 
 ## 5. For the frontend dev, right now
 
-- You can integrate `/auth/register` today: store `access_token` in memory (not localStorage —
-  15 min lifetime, refresh via the cookie-backed `/auth/refresh` on 401), rely on the browser to
-  carry `refresh_token` automatically since it's `httpOnly`.
-- **Don't build a login screen against a real endpoint yet** — it isn't there. Mock it, or wait
-  for Phase 1 item 2.
-- Don't build against the RFC 7807 error shape yet (§2) — use `error.detail` as a string for now
-  and expect a follow-up change.
-- Nothing beyond auth exists — no artwork/catalogue data to point the home page at yet. Phase 2
-  is the next thing that unblocks real frontend work beyond the auth screens.
+- **Login and signup are both real** — `/auth/register` and `/auth/login` return the same shape;
+  store `access_token` in memory (not localStorage — 15 min lifetime, refresh via the
+  cookie-backed `/auth/refresh` on 401), rely on the browser to carry `refresh_token`
+  automatically since it's `httpOnly`. Use `/auth/check-email` for inline "email already taken"
+  validation on the signup form, and `GET /auth/me` to hydrate the logged-in session on page load.
+- **The "apply to be an artist" flow is real too** — `/me/artist-application` (create/update),
+  `/me/artist-application/works/{slot}` (the 3 work-sample slots), and `/submit`. Remember `GET`
+  404s until the applicant's first successful `POST` — that's the "show the empty form" signal,
+  not an error.
+- Don't build against the RFC 7807 error shape yet (§2) — use `error.detail` as a string (it's
+  sometimes a string, sometimes an object keyed by field name — see the artist-application
+  `422`s above) and expect a follow-up change.
+- **No public catalogue exists** — no `/artworks`, `/artists`, `/testimonials`, nothing a homepage
+  or explore page could render real data from yet. Mock homepage/gallery data for now; that's the
+  next priority (Phase 2 item 9 above).
+- Social login buttons (Apple/Google/Facebook), if they're in your designs, aren't backed by
+  anything — there's no OAuth flow in the PRD or this codebase. Worth a separate conversation
+  before wiring those up to anything real.
