@@ -13,9 +13,9 @@ Status legend: ✅ implemented & deployed · 🚧 not built yet · ⚠️ implem
 
 ## 1. What's live right now
 
-Only **auth** exists. There is no artwork, artist, auction, order, wishlist, exhibition, or
-notification model/endpoint in the codebase yet — `users` and `refresh_tokens` are the only two
-tables.
+Auth, the artist-application submission flow, and the admin approval flow (JSON + an HTML admin
+panel) exist. There is no catalogue browsing, auction, order, wishlist, exhibition, or
+notification model/endpoint in the codebase yet.
 
 | Method | Path | Status |
 | --- | --- | --- |
@@ -30,7 +30,15 @@ tables.
 | GET | `/api/v1/auth/me` | 🚧 not built |
 | DELETE | `/api/v1/auth/sessions/{id}` | 🚧 not built |
 | POST | `/api/v1/auth/password/forgot` · `/reset` | 🚧 not built |
-| *everything in PRD §4.2–§4.9* | catalogue, auctions, orders, studio, admin | 🚧 not built |
+| GET / POST | `/api/v1/me/artist-application` | ✅ (see §3) |
+| PUT / DELETE | `/api/v1/me/artist-application/works/{slot}` | ✅ (see §3) |
+| POST | `/api/v1/me/artist-application/submit` | ✅ (see §3) |
+| GET | `/api/v1/admin/applications` | ✅ (see §3) |
+| POST | `/api/v1/admin/applications/{id}/claim` · `/approve` · `/reject` | ✅ (see §3) |
+| GET | `/api/v1/admin/artworks` | ✅ (see §3) |
+| PATCH | `/api/v1/admin/artworks/{id}` | ✅ (see §3) |
+| GET/POST | `/admin/*` (HTML admin panel, not part of the JSON API) | ✅ (see §3) |
+| *everything else in PRD §4.2–§4.9* | catalogue browsing, auctions, orders, studio | 🚧 not built |
 
 **If you were told login exists — it doesn't yet.** Registration issues you a working access
 token + refresh cookie immediately, so you can build/test the logged-in UI against `/register`
@@ -135,6 +143,182 @@ No body. ⚠️ Authenticates via the `refresh_token` cookie (see §2 caveat).
 - `200` → `{ "exists": true }` — for inline "email already taken" hints on the signup form.
   Note this is an unauthenticated user-enumeration surface (anyone can probe whether an email is
   registered); acceptable for v1 per how it's being used, flagging so it's a conscious choice.
+
+---
+
+### Artist applications (`/me/artist-application*`)
+
+All routes below require `Authorization: Bearer <access_token>` (`get_current_user`).
+
+#### `GET /api/v1/me/artist-application`
+
+Returns the caller's current *open* application (draft, submitted, or under_review) with its
+works.
+- `200` → `ArtistApplicationOut`:
+  ```jsonc
+  {
+    "id": "uuid", "status": "draft",
+    "full_name": "string", "location": "string", "primary_medium": "string",
+    "years_practising": 5, "website_url": null, "instagram": null, "statement": null,
+    "submitted_at": null, "reviewed_at": null, "rejection_reason": null,
+    "works": [
+      { "slot_index": 0, "title": "string", "year": 2024, "medium": "string",
+        "dimensions": "string", "image_url": "https://..." }
+    ]
+  }
+  ```
+- `404` → `{"detail": "No application yet"}`
+
+⚠️ **Deliberate PRD deviation:** the PRD reads as though every user should have an implicit draft
+application from day one. This implementation does **not** auto-create an empty draft row on
+first `GET` — `full_name`, `location`, and `primary_medium` are `NOT NULL` columns on
+`artist_applications`, so an empty draft can't exist without dummy placeholder values. Instead,
+`GET /me/artist-application` 404s until the applicant's first successful `POST`, which creates
+the row with real data. Frontend should treat 404 here as "show the empty application form", not
+as an error state.
+
+#### `POST /api/v1/me/artist-application`
+
+Upserts the caller's draft (create-or-update). Body is `ArtistApplicationIn`:
+```jsonc
+{ "full_name": "string", "location": "string", "primary_medium": "string",
+  "years_practising": 5, "website_url": null, "instagram": null, "statement": null }
+```
+- `200` → `ArtistApplicationOut` (see shape above)
+- `409` → `{"detail": "Cannot edit an application after it's been submitted."}` — only a `draft`
+  can be upserted.
+
+#### `PUT /api/v1/me/artist-application/works/{slot}`
+
+`slot` must be `0`, `1`, or `2` (exactly three work slots). Body is `ApplicationWorkIn`:
+```jsonc
+{ "title": "string", "image_url": "https://...", "year": 2024, "medium": "string",
+  "dimensions": "string" }
+```
+- `200` → `ApplicationWorkOut`
+- `422` → `{"detail": "slot must be 0, 1, or 2"}`
+- `404` → `{"detail": "No application yet"}` (no open application to attach the work to)
+- `409` → `{"detail": "Cannot edit an application after it's been submitted."}`
+
+#### `DELETE /api/v1/me/artist-application/works/{slot}`
+
+Clears one work slot on the draft.
+- `204` → no body
+- `422` / `404` / `409` → same conditions as `PUT`, above.
+
+#### `POST /api/v1/me/artist-application/submit`
+
+Submits the open application for admin review. Requires exactly three works and
+`full_name`/`primary_medium`/`location` to be filled in (they always are once a `POST` has
+succeeded, but the check is defensive).
+- `200` → `ArtistApplicationOut` with `status: "submitted"`
+- `404` → `{"detail": "No application yet"}`
+- `409` → `{"detail": "This application has already been submitted."}`
+- `422` → field-keyed validation errors, e.g.
+  ```jsonc
+  { "detail": {
+      "works": ["Submit three works…"],
+      "primary_medium": ["Tell us your primary medium."]
+  } }
+  ```
+  Two whole-application (not field-specific) errors use the `non_field_errors` key instead of a
+  field name:
+  - Reapply cooldown after a rejection: `{"detail": {"non_field_errors": ["You can reapply on
+    2026-10-05."]}}`
+  - Already an approved artist: `{"detail": {"non_field_errors": ["You're already an approved
+    artist."]}}`
+
+---
+
+### Admin review queue (`/admin/applications*`, `/admin/artworks*` — JSON API)
+
+All routes below require `Authorization: Bearer <access_token>` for a user with `is_admin = true`
+(`get_current_admin_user`); non-admins get `403`. This is a **separate auth mechanism** from the
+HTML admin panel described below — the JSON API always uses the Bearer/JWT scheme like the rest
+of `/api/v1`, never the session cookie.
+
+#### `GET /api/v1/admin/applications?status=<status>`
+
+`status` is optional; when given it must be one of `draft`, `submitted`, `under_review`,
+`approved`, `rejected` — an invalid value is rejected by FastAPI/Pydantic before it reaches the
+database.
+- `200` → `list[ArtistApplicationAdminOut]` (same shape as `ArtistApplicationOut` plus `user_id`
+  and `applicant_email`)
+- `422` → FastAPI's standard query-validation error body if `status` isn't a recognised value.
+
+#### `POST /api/v1/admin/applications/{id}/claim`
+
+Moves a `submitted` application to `under_review` and records the claiming admin.
+- `200` → `ArtistApplicationAdminOut`
+- `404` → `{"detail": "Application not found"}`
+- `409` → `{"detail": "Only a submitted application can be claimed."}`
+
+#### `POST /api/v1/admin/applications/{id}/approve`
+
+Approves a `submitted` or `under_review` application: creates the `artist_profiles` row and three
+`draft` `artworks` rows (one per submitted work), and flips the user's `artist_status` to
+`approved`.
+- `200` → `ArtistApplicationAdminOut` with `status: "approved"`
+- `404` → `{"detail": "Application not found"}`
+- `409` → one of:
+  - `{"detail": "Only a submitted or under-review application can be approved."}`
+  - `{"detail": "Application no longer has exactly three works."}`
+  - `{"detail": "This application (or applicant) was already approved."}` — guards the race where
+    two admins approve the same application (or the applicant is otherwise already an approved
+    artist) concurrently; the second commit hits a DB conflict and is turned into this 409 instead
+    of a raw 500.
+
+#### `POST /api/v1/admin/applications/{id}/reject`
+
+Body: `{"reason": "string"}`. Rejects a `submitted` or `under_review` application.
+- `200` → `ArtistApplicationAdminOut` with `status: "rejected"`
+- `404` → `{"detail": "Application not found"}`
+- `409` → `{"detail": "Only a submitted or under-review application can be rejected."}`
+
+#### `GET /api/v1/admin/artworks?status=<status>`
+
+`status` is optional; when given it must be one of `draft`, `published`, `reserved`, `sold`,
+`unlisted`, `removed` — same 422-on-invalid-value behaviour as the applications endpoint above.
+- `200` → `list[ArtworkOut]`
+
+#### `PATCH /api/v1/admin/artworks/{id}`
+
+Body: `{"status": "published"}` (or any other `ArtworkStatus` value, as a plain string here — this
+endpoint's payload is validated in the service layer, not via a Pydantic enum, so an invalid value
+returns a clean `422` rather than a query-param-style FastAPI error).
+- `200` → `ArtworkOut`
+- `404` → `{"detail": "Artwork not found"}`
+- `422` → `{"detail": "'<value>' is not a valid artwork status."}`
+
+---
+
+### HTML admin panel (`/admin/*`)
+
+A server-rendered HTML panel for reviewing applications and managing artwork status, separate
+from the JSON API above:
+
+- **Prefix:** `/admin` (note: no `/api/v1` — this is not part of the JSON API surface, and
+  `include_in_schema=False` keeps it out of the `/api/v1/docs` Swagger UI).
+- **Auth:** session-cookie based (`admin_session` cookie via Starlette's `SessionMiddleware`,
+  scoped to path `/admin`), entirely separate from the Bearer/JWT scheme used everywhere else.
+  Log in at `GET/POST /admin/login` with an admin user's email + password; log out at
+  `POST /admin/logout`. Visiting any `/admin/*` page without a valid session redirects to
+  `/admin/login`.
+- **Granting admin access is still a direct DB operation** — there is no self-service "become an
+  admin" flow anywhere in the product. An operator sets `users.is_admin = true` by hand (e.g. via
+  a one-off SQL statement) for whichever account should have panel access.
+- **Pages:**
+  - `GET /admin` → redirects to `/admin/applications` (session-gated, same as every other page).
+  - `GET /admin/applications` (optional `?status=`) — list view; an unrecognised `status` value
+    is treated as "no filter" rather than erroring, since this is a human-editable URL bar, not a
+    JSON API.
+  - `GET /admin/applications/{id}` — detail view with approve/reject actions.
+  - `POST /admin/applications/{id}/approve` / `/reject` — same underlying service calls as the
+    JSON routes; on a conflict (e.g. another admin already approved/rejected it), redirects back
+    to the page with `?error=<message>` instead of silently succeeding.
+  - `GET /admin/artworks` (optional `?status=`, same invalid-value-is-no-filter behaviour) — list
+    view showing title, artist, listing type, and status, with an inline status-change form per
+    row.
 
 ---
 

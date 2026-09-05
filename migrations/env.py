@@ -10,7 +10,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.core.config import settings
 from app.db.session import Base
 from app.models.user import User
-from app.models.refresh_token import RefreshToken 
+from app.models.refresh_token import RefreshToken
+from app.models.artist_application import ArtistApplication
+from app.models.application_work import ApplicationWork
+from app.models.artist_profile import ArtistProfile
+from app.models.artwork import Artwork
+from app.models.artwork_image import ArtworkImage
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
