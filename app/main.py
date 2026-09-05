@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 from app.core.config import settings
-from app.api.v1 import auth, artist_applications, admin
+from app.api.v1 import auth, artist_applications, admin, catalogue
 from app.admin_panel.auth import AdminAuthRequired
 from app.admin_panel import login_routes
 from app.admin_panel import application_routes
@@ -33,6 +33,7 @@ app.include_router(
     artist_applications.router, prefix=settings.API_V1_PREFIX, tags=["Artist Application"]
 )
 app.include_router(admin.router, prefix=settings.API_V1_PREFIX, tags=["Admin"])
+app.include_router(catalogue.router, prefix=settings.API_V1_PREFIX, tags=["Catalogue"])
 app.include_router(login_routes.router, prefix="/admin", tags=["Admin Panel"], include_in_schema=False)
 app.include_router(application_routes.router, prefix="/admin", tags=["Admin Panel"], include_in_schema=False)
 app.include_router(artwork_routes.router, prefix="/admin", tags=["Admin Panel"], include_in_schema=False)

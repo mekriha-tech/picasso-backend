@@ -121,4 +121,6 @@ async def update_artwork_status_route(
         artwork = await artworks_service.set_artwork_status(db, artwork, payload.status)
     except artworks_service.InvalidArtworkStatusError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    except artworks_service.ArtworkNotPublishableError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return artwork

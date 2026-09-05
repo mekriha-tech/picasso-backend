@@ -50,7 +50,10 @@ async def update_artwork_status_form(
     if artwork is not None:
         try:
             await artworks_service.set_artwork_status(db, artwork, new_status)
-        except artworks_service.InvalidArtworkStatusError as exc:
+        except (
+            artworks_service.InvalidArtworkStatusError,
+            artworks_service.ArtworkNotPublishableError,
+        ) as exc:
             return RedirectResponse(
                 url=f"/admin/artworks?error={quote(str(exc))}", status_code=303
             )

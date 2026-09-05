@@ -1,13 +1,25 @@
 import uuid
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.artist_profile import ArtistProfile
 from app.models.artwork import Artwork, ArtworkStatus
+from app.models.artwork_image import ArtworkImage
 
 
 class InvalidArtworkStatusError(Exception):
     pass
+
+
+class ArtworkNotPublishableError(Exception):
+    pass
+
+
+PUBLIC_ARTWORK_STATUSES = {
+    ArtworkStatus.published.value,
+    ArtworkStatus.reserved.value,
+    ArtworkStatus.sold.value,
+}
 
 
 async def list_artworks(
@@ -33,7 +45,23 @@ async def set_artwork_status(db: AsyncSession, artwork: Artwork, new_status: str
     valid_statuses = {s.value for s in ArtworkStatus}
     if new_status not in valid_statuses:
         raise InvalidArtworkStatusError(f"'{new_status}' is not a valid artwork status.")
+
+    if new_status in PUBLIC_ARTWORK_STATUSES:
+        if not artwork.title or not artwork.year or not artwork.medium:
+            raise ArtworkNotPublishableError(
+                "Artwork needs a title, year, and medium before it can be published."
+            )
+        image_result = await db.execute(
+            select(ArtworkImage.id).where(ArtworkImage.artwork_id == artwork.id).limit(1)
+        )
+        if image_result.first() is None:
+            raise ArtworkNotPublishableError(
+                "Artwork needs at least one image before it can be published."
+            )
+
     artwork.status = ArtworkStatus(new_status)
+    if new_status in PUBLIC_ARTWORK_STATUSES and artwork.published_at is None:
+        artwork.published_at = func.now()
     await db.commit()
     await db.refresh(artwork)
     return artwork
