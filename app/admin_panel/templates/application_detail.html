@@ -2,6 +2,7 @@
 {% block title %}Application — {{ application.full_name }}{% endblock %}
 {% block body %}
   <nav><a href="/admin/applications">&larr; Back to applications</a></nav>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
   <h1>{{ application.full_name }}</h1>
   <p><strong>Email:</strong> {{ applicant_email }}</p>
   <p><strong>Location:</strong> {{ application.location }}</p>

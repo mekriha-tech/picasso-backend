@@ -1,4 +1,5 @@
 import uuid
+from urllib.parse import quote
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -18,15 +19,24 @@ router = APIRouter()
 async def applications_list(
     request: Request,
     status: str | None = None,
+    error: str | None = None,
     admin: User = Depends(get_session_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    status_filter = ApplicationStatus(status) if status else None
+    try:
+        status_filter = ApplicationStatus(status) if status else None
+    except ValueError:
+        status_filter = None
     rows = await applications_service.list_applications(db, status=status_filter)
     return templates.TemplateResponse(
         request,
         "applications_list.html",
-        {"rows": rows, "current_status": status, "statuses": [s.value for s in ApplicationStatus]},
+        {
+            "rows": rows,
+            "current_status": status,
+            "statuses": [s.value for s in ApplicationStatus],
+            "error": error,
+        },
     )
 
 
@@ -34,6 +44,7 @@ async def applications_list(
 async def application_detail(
     request: Request,
     application_id: uuid.UUID,
+    error: str | None = None,
     admin: User = Depends(get_session_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -46,7 +57,12 @@ async def application_detail(
     return templates.TemplateResponse(
         request,
         "application_detail.html",
-        {"application": application, "works": works, "applicant_email": applicant_email},
+        {
+            "application": application,
+            "works": works,
+            "applicant_email": applicant_email,
+            "error": error,
+        },
     )
 
 
@@ -60,8 +76,11 @@ async def approve_application_form(
     if application is not None:
         try:
             await applications_service.approve_application(db, application, admin)
-        except applications_service.ApplicationNotEditableError:
-            pass
+        except applications_service.ApplicationNotEditableError as exc:
+            return RedirectResponse(
+                url=f"/admin/applications/{application_id}?error={quote(str(exc))}",
+                status_code=303,
+            )
     return RedirectResponse(url="/admin/applications", status_code=303)
 
 
@@ -76,6 +95,9 @@ async def reject_application_form(
     if application is not None:
         try:
             await applications_service.reject_application(db, application, admin, reason)
-        except applications_service.ApplicationNotEditableError:
-            pass
+        except applications_service.ApplicationNotEditableError as exc:
+            return RedirectResponse(
+                url=f"/admin/applications/{application_id}?error={quote(str(exc))}",
+                status_code=303,
+            )
     return RedirectResponse(url="/admin/applications", status_code=303)

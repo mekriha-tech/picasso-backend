@@ -4,8 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin_user
+from app.api.v1.artist_applications import _to_out
 from app.db.session import get_db
 from app.models.artist_application import ApplicationStatus
+from app.models.artwork import ArtworkStatus
 from app.models.user import User
 from app.schemas.artist_application import ArtistApplicationAdminOut, RejectRequest
 from app.schemas.artwork import ArtworkOut, ArtworkStatusUpdate
@@ -17,31 +19,9 @@ router = APIRouter()
 
 def _to_admin_out(application, works, applicant_email) -> dict:
     return {
-        "id": application.id,
+        **_to_out(application, works),
         "user_id": application.user_id,
         "applicant_email": applicant_email,
-        "status": application.status,
-        "full_name": application.full_name,
-        "location": application.location,
-        "primary_medium": application.primary_medium,
-        "years_practising": application.years_practising,
-        "website_url": application.website_url,
-        "instagram": application.instagram,
-        "statement": application.statement,
-        "submitted_at": application.submitted_at,
-        "reviewed_at": application.reviewed_at,
-        "rejection_reason": application.rejection_reason,
-        "works": [
-            {
-                "slot_index": w.slot_index,
-                "title": w.title,
-                "year": w.year,
-                "medium": w.medium,
-                "dimensions": w.dimensions,
-                "image_url": w.image_url,
-            }
-            for w in works
-        ],
     }
 
 
@@ -119,11 +99,12 @@ async def reject_application_route(
 
 @router.get("/admin/artworks", response_model=list[ArtworkOut])
 async def list_artworks_route(
-    status: str | None = Query(default=None),
+    status: ArtworkStatus | None = Query(default=None),
     current_admin: User = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await artworks_service.list_artworks(db, status=status)
+    rows = await artworks_service.list_artworks(db, status=status)
+    return [artwork for artwork, _artist_display_name in rows]
 
 
 @router.patch("/admin/artworks/{artwork_id}", response_model=ArtworkOut)

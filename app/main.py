@@ -33,9 +33,9 @@ app.include_router(
     artist_applications.router, prefix=settings.API_V1_PREFIX, tags=["Artist Application"]
 )
 app.include_router(admin.router, prefix=settings.API_V1_PREFIX, tags=["Admin"])
-app.include_router(login_routes.router, prefix="/admin", tags=["Admin Panel"])
-app.include_router(application_routes.router, prefix="/admin", tags=["Admin Panel"])
-app.include_router(artwork_routes.router, prefix="/admin", tags=["Admin Panel"])
+app.include_router(login_routes.router, prefix="/admin", tags=["Admin Panel"], include_in_schema=False)
+app.include_router(application_routes.router, prefix="/admin", tags=["Admin Panel"], include_in_schema=False)
+app.include_router(artwork_routes.router, prefix="/admin", tags=["Admin Panel"], include_in_schema=False)
 
 @app.get("/health", tags=["Health"])
 async def health_check():

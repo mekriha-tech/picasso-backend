@@ -6,6 +6,7 @@
     <form class="inline" method="post" action="/admin/logout"><button type="submit">Log out</button></form>
   </nav>
   <h1>Artworks</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
   <form method="get">
     <select name="status" onchange="this.form.submit()">
       <option value="">All statuses</option>
@@ -15,10 +16,11 @@
     </select>
   </form>
   <table>
-    <tr><th>Title</th><th>Listing type</th><th>Status</th><th>Change status</th></tr>
-    {% for artwork in artworks %}
+    <tr><th>Title</th><th>Artist</th><th>Listing type</th><th>Status</th><th>Change status</th></tr>
+    {% for artwork, artist_display_name in artworks %}
       <tr>
         <td>{{ artwork.title }}</td>
+        <td>{{ artist_display_name }}</td>
         <td>{{ artwork.listing_type.value }}</td>
         <td><span class="badge">{{ artwork.status.value }}</span></td>
         <td>

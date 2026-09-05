@@ -1,4 +1,5 @@
 import uuid
+from urllib.parse import quote
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,14 +18,24 @@ router = APIRouter()
 async def artworks_list(
     request: Request,
     status: str | None = None,
+    error: str | None = None,
     admin: User = Depends(get_session_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    artworks = await artworks_service.list_artworks(db, status=status)
+    try:
+        rows = await artworks_service.list_artworks(db, status=status)
+    except Exception:
+        await db.rollback()
+        rows = await artworks_service.list_artworks(db, status=None)
     return templates.TemplateResponse(
         request,
         "artworks_list.html",
-        {"artworks": artworks, "current_status": status, "statuses": [s.value for s in ArtworkStatus]},
+        {
+            "artworks": rows,
+            "current_status": status,
+            "statuses": [s.value for s in ArtworkStatus],
+            "error": error,
+        },
     )
 
 
@@ -39,6 +50,8 @@ async def update_artwork_status_form(
     if artwork is not None:
         try:
             await artworks_service.set_artwork_status(db, artwork, new_status)
-        except artworks_service.InvalidArtworkStatusError:
-            pass
+        except artworks_service.InvalidArtworkStatusError as exc:
+            return RedirectResponse(
+                url=f"/admin/artworks?error={quote(str(exc))}", status_code=303
+            )
     return RedirectResponse(url="/admin/artworks", status_code=303)

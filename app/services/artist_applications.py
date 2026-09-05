@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
@@ -144,20 +145,24 @@ async def submit_application(db: AsyncSession, application: ArtistApplication) -
     if errors:
         raise ApplicationValidationError(errors)
 
+    result = await db.execute(select(User).where(User.id == application.user_id))
+    user = result.scalars().first()
+    if user is not None and user.artist_status == ArtistStatus.approved:
+        raise ApplicationValidationError(
+            {"non_field_errors": ["You're already an approved artist."]}
+        )
+
     last_rejected = await get_last_rejected_application(db, application.user_id)
     if last_rejected is not None and last_rejected.reviewed_at is not None:
         now = datetime.now(timezone.utc)
         if is_in_reapply_cooldown(last_rejected.reviewed_at, now):
             available_at = reapply_available_at(last_rejected.reviewed_at)
             raise ApplicationValidationError(
-                {"detail": [f"You can reapply on {available_at.date().isoformat()}."]}
+                {"non_field_errors": [f"You can reapply on {available_at.date().isoformat()}."]}
             )
 
     application.status = ApplicationStatus.submitted
     application.submitted_at = func.now()
-
-    result = await db.execute(select(User).where(User.id == application.user_id))
-    user = result.scalars().first()
     user.artist_status = ArtistStatus.pending
 
     await db.commit()
@@ -229,7 +234,13 @@ async def approve_application(db: AsyncSession, application: ArtistApplication, 
     user = result.scalars().first()
     user.artist_status = ArtistStatus.approved
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise ApplicationNotEditableError(
+            "This application (or applicant) was already approved."
+        )
     await db.refresh(profile)
     return profile
 
