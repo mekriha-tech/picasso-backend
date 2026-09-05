@@ -186,3 +186,86 @@ async def get_featured_artworks(db: AsyncSession) -> dict:
         rows = (await db.execute(query)).all()
         result[lt.value] = [_artwork_card_dict(a, s, n) for a, s, n in rows]
     return result
+
+
+def _artist_card_dict(artist: ArtistProfile) -> dict:
+    return {
+        "slug": artist.slug,
+        "display_name": artist.display_name,
+        "primary_medium": artist.primary_medium,
+        "cover_image_url": artist.cover_image_url,
+        "is_featured": artist.is_featured,
+    }
+
+
+async def list_artists(
+    db: AsyncSession, *, limit: int = 24, cursor: str | None = None
+) -> tuple[list[dict], str | None]:
+    has_published_artwork = (
+        select(Artwork.id)
+        .where(Artwork.artist_id == ArtistProfile.id)
+        .where(Artwork.status.in_(PUBLIC_STATUSES))
+        .exists()
+    )
+    query = select(ArtistProfile).where(has_published_artwork)
+
+    if cursor:
+        decoded = decode_cursor(cursor)
+        if decoded is None:
+            raise InvalidCursorError("Invalid cursor")
+        raw_value, cursor_id = decoded
+        try:
+            cursor_value = datetime.fromisoformat(raw_value)
+        except ValueError:
+            raise InvalidCursorError("Invalid cursor")
+        query = query.where(
+            or_(
+                ArtistProfile.approved_at < cursor_value,
+                and_(ArtistProfile.approved_at == cursor_value, ArtistProfile.id < cursor_id),
+            )
+        )
+
+    query = query.order_by(ArtistProfile.approved_at.desc(), ArtistProfile.id.desc()).limit(limit + 1)
+    rows = (await db.execute(query)).scalars().all()
+
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    items = [_artist_card_dict(a) for a in rows]
+
+    next_cursor = None
+    if has_more and rows:
+        last = rows[-1]
+        next_cursor = encode_cursor(last.approved_at, last.id)
+
+    return items, next_cursor
+
+
+async def get_artist_by_slug(db: AsyncSession, slug: str) -> dict | None:
+    artist = (
+        await db.execute(select(ArtistProfile).where(ArtistProfile.slug == slug))
+    ).scalars().first()
+    if artist is None:
+        return None
+
+    works_query = (
+        select(Artwork, ArtistProfile.slug, ArtistProfile.display_name)
+        .join(ArtistProfile, Artwork.artist_id == ArtistProfile.id)
+        .where(Artwork.artist_id == artist.id)
+        .where(Artwork.status.in_(PUBLIC_STATUSES))
+        .order_by(Artwork.published_at.desc())
+    )
+    rows = (await db.execute(works_query)).all()
+    works = [_artwork_card_dict(a, s, n) for a, s, n in rows]
+
+    card = _artist_card_dict(artist)
+    card.update(
+        {
+            "statement": artist.statement,
+            "years_practising": artist.years_practising,
+            "website_url": artist.website_url,
+            "instagram": artist.instagram,
+            "approved_at": artist.approved_at,
+            "works": works,
+        }
+    )
+    return card
