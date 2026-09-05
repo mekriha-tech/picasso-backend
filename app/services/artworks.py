@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.artist_profile import ArtistProfile
@@ -53,6 +53,8 @@ async def set_artwork_status(db: AsyncSession, artwork: Artwork, new_status: str
             )
 
     artwork.status = ArtworkStatus(new_status)
+    if new_status == ArtworkStatus.published.value and artwork.published_at is None:
+        artwork.published_at = func.now()
     await db.commit()
     await db.refresh(artwork)
     return artwork

@@ -78,6 +78,8 @@ async def list_public_artworks(
         query = query.where(Artwork.price >= min_price)
     if max_price is not None:
         query = query.where(Artwork.price <= max_price)
+    if sort in ("price_asc", "price_desc"):
+        query = query.where(Artwork.price.isnot(None))
     if q:
         query = query.where(Artwork.title.ilike(f"%{q}%"))
 
@@ -92,7 +94,7 @@ async def list_public_artworks(
                 if sort_col is Artwork.published_at
                 else Decimal(raw_value)
             )
-        except (ValueError, InvalidOperation):
+        except (ValueError, InvalidOperation, TypeError):
             raise InvalidCursorError("Invalid cursor")
 
         if descending:
