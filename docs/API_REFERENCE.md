@@ -1,8 +1,9 @@
 # Picasso Backend — API Reference (for frontend integration)
 
-**Last verified against:** `main` @ `e87f935` (2026-09-05) — cross-checked against the live
+**Last verified against:** `main` @ PR #14 (2026-09-06) — cross-checked against the live
 deployment via a full smoke test (register → login → apply → submit → admin approve/reject →
-artwork status change), not just read off the code.
+artwork status change → publish → browse via the new public catalogue endpoints → paginate →
+error cases), not just read off the code.
 **Live environment:** https://picasso-backend-production.up.railway.app
 **Base path:** `/api/v1` (health check is the one exception, at root `/health`)
 **Full spec of record:** [`docs/PRD.md`](./PRD.md) — this document is a snapshot of *what's actually
@@ -15,9 +16,10 @@ Status legend: ✅ implemented & deployed · 🚧 not built yet · ⚠️ implem
 
 ## 1. What's live right now
 
-Auth (including login), the artist-application submission flow, and the admin approval flow
-(JSON + an HTML admin panel) all exist and are deployed. There is still no catalogue browsing,
-auction, order, wishlist, exhibition, or notification model/endpoint in the codebase.
+Auth (including login), the artist-application submission flow, the admin approval flow
+(JSON + an HTML admin panel), and the public catalogue (artworks + artists browsing) all exist
+and are deployed. There is still no auction, order, wishlist, exhibition, or notification
+model/endpoint in the codebase.
 
 | Method | Path | Status |
 | --- | --- | --- |
@@ -38,9 +40,14 @@ auction, order, wishlist, exhibition, or notification model/endpoint in the code
 | GET | `/api/v1/admin/applications` | ✅ (see §3) |
 | POST | `/api/v1/admin/applications/{id}/claim` · `/approve` · `/reject` | ✅ (see §3) |
 | GET | `/api/v1/admin/artworks` | ✅ (see §3) |
-| PATCH | `/api/v1/admin/artworks/{id}` | ✅ (see §3) |
+| PATCH | `/api/v1/admin/artworks/{id}` | ✅ (see §3, now enforces PRD rule 10 when publishing) |
 | GET/POST | `/admin/*` (HTML admin panel, not part of the JSON API) | ✅ (see §3) |
-| *everything else in PRD §4.2–§4.9* | catalogue browsing, auctions, orders, studio | 🚧 not built |
+| GET | `/api/v1/artworks` | ✅ (see §3 — filtered, sorted, cursor-paginated) |
+| GET | `/api/v1/artworks/{slug}` | ✅ (see §3) |
+| GET | `/api/v1/artworks/featured` | ✅ (see §3) |
+| GET | `/api/v1/artists` | ✅ (see §3) |
+| GET | `/api/v1/artists/{slug}` | ✅ (see §3) |
+| *everything else in PRD §4.3–§4.9* | auctions, orders, wishlist, exhibitions, studio | 🚧 not built |
 
 Login is real now: `POST /auth/login` with `{email, password}` returns the same shape as
 `/register` (user + access token + refresh cookie). `GET /auth/me` returns the current user
@@ -333,6 +340,13 @@ returns a clean `422` rather than a query-param-style FastAPI error).
 - `200` → `ArtworkOut`
 - `404` → `{"detail": "Artwork not found"}`
 - `422` → `{"detail": "'<value>' is not a valid artwork status."}`
+- `409` → `{"detail": "Artwork needs a title, year, and medium before it can be published."}` or
+  `{"detail": "Artwork needs at least one image before it can be published."}` — **PRD rule 10**:
+  enforced when the target status is `published`, `reserved`, or `sold` (any status the public
+  catalogue below can show), not just `published` specifically. There is currently **no
+  in-product way to fix a draft's missing fields** — no Studio edit endpoint exists yet — so a
+  draft that fails this check needs a direct DB edit to become publishable. Worth flagging to
+  whoever's testing the admin panel, since it's a real dead end today.
 
 ---
 
@@ -366,6 +380,93 @@ from the JSON API above:
 
 ---
 
+### Public catalogue (`/artworks*`, `/artists*`)
+
+No auth on any of these — public, unauthenticated, matching PRD §4.2. Every query filters to
+`status IN ('published', 'reserved', 'sold')`; `draft`/`unlisted`/`removed` artworks never appear
+here regardless of other filters, no exceptions.
+
+#### `GET /api/v1/artworks?listing_type=&category=&artist_id=&min_price=&max_price=&q=&sort=&limit=&cursor=`
+
+All params optional.
+- `listing_type`: `sale` / `auction` / `display` — invalid value → `422`
+- `sort`: `newest` (default) / `price_asc` / `price_desc` / `ending_soon` — invalid value → `422`.
+  ⚠️ `ending_soon` currently behaves identically to `newest` (no `auctions` table exists yet, so
+  there's no real "time until close" to sort by). ⚠️ `price_asc`/`price_desc` exclude
+  NULL-priced artworks entirely (sorting "by price" for something with no price is meaningless) —
+  today that means these two sorts return **no results at all**, since every artwork so far is
+  `listing_type='display'`, which per the `display_has_no_price` CHECK constraint always has
+  `price = NULL`. This isn't a bug; it'll start returning real results once `sale`-listing
+  artworks exist (Studio work, not yet built).
+- `min_price`/`max_price`: numeric strings; non-numeric or non-finite (`NaN`/`Infinity`) → `400`
+- `q`: plain `ILIKE '%...%'` on `title`, nothing fancier
+- `limit`: default 24, max 100
+- `cursor`: opaque, from a previous response's `next_cursor` — malformed/garbage → `400`
+  (`{"detail": "Invalid cursor"}`), never a 500
+- `200` →
+  ```jsonc
+  { "items": [ /* artwork cards, see shape below */ ], "next_cursor": "opaque-string-or-null" }
+  ```
+
+**Artwork card shape** (used here, in `/artworks/featured`, and embedded in `/artists/{slug}`'s
+`works`):
+```jsonc
+{
+  "id": "uuid", "slug": "sunset", "title": "Sunset",
+  "artist": { "slug": "elena-frost", "display_name": "Elena Frost" },
+  "primary_image_url": "https://...", "medium": "Oil", "dimensions": null,
+  "year": 2024, "listing_type": "display", "status": "published",
+  "badge": "On Display",
+  "price": null, "sold": false, "sold_price": null,
+  "auction": null, "in_wishlist": false
+}
+```
+`price`/`sold_price` are **strings**, not JSON numbers, to avoid float precision loss — parse them
+client-side if you need to do math. `auction` is always `null` (no auctions table yet) and
+`in_wishlist` is always `false` (no wishlist yet, and these are unauthenticated endpoints anyway)
+— both real PRD-documented fields kept present-but-inert for forward compatibility rather than
+omitted, so the frontend can build its card component once against the final shape.
+
+#### `GET /api/v1/artworks/{slug}`
+
+Card shape plus `description`, `width_cm`, `height_cm` (also strings), `category`, `view_count`,
+and the full `images` array (`url`, `alt_text`, `sort_order`, `is_primary`) instead of just
+`primary_image_url`.
+- `200` → detail shape above
+- `404` → `{"detail": "Artwork not found"}` (includes non-public statuses — a `draft` artwork's
+  slug 404s here even though `GET /admin/artworks` can see it)
+
+#### `GET /api/v1/artworks/featured`
+
+No params. Powers the homepage.
+- `200` → `{ "sale": [...up to 3 cards], "auction": [...up to 3], "display": [...up to 3] }`,
+  each ordered newest-first. `sale`/`auction` are empty arrays today — nothing creates those
+  listing types yet (Studio/auction work, not built) — that's correct, not a bug.
+
+#### `GET /api/v1/artists?limit=&cursor=`
+
+Only artists with **at least one publicly-visible artwork** appear here (a deliberate default —
+no reason to show an empty directory entry for someone with nothing published yet).
+- `200` →
+  ```jsonc
+  { "items": [
+    { "slug": "elena-frost", "display_name": "Elena Frost", "primary_medium": "Oil painting",
+      "cover_image_url": null, "is_featured": false }
+  ], "next_cursor": "opaque-string-or-null" }
+  ```
+
+#### `GET /api/v1/artists/{slug}`
+
+Card shape plus `statement`, `years_practising`, `website_url`, `instagram`, `approved_at`, and
+`works` (their published artworks, using the artwork card shape above, unpaginated — a
+reasonable list size for one artist's page). **No** publicly-visible-artwork filter here (unlike
+the list endpoint) — a direct link to an approved artist's profile resolves even before they have
+anything published, just with an empty `works` array.
+- `200` → detail shape above
+- `404` → `{"detail": "Artist not found"}`
+
+---
+
 ## 4. Priority build plan
 
 Ordered so that nothing blocks on something later in the list. Roughly follows PRD §7, adjusted
@@ -383,16 +484,18 @@ for what's actually done and for the Bearer-auth gap above.
    the current shape is fine) — do this **before** the frontend builds its error-handling layer.
    Still not done; see the Error shape note in §2.
 
-### Phase 2 — Artist identity + artwork core ✅ mostly done
+### Phase 2 — Artist identity + artwork core ✅ done
 8. ✅ `artist_profiles`, `artworks`, `artwork_images` tables (PRD §3.3, §3.5)
-9. 🚧 Public catalogue: `GET /artworks`, `/artworks/{slug}`, `/artworks/featured`, `/artists`,
-   `/artists/{slug}` — **not built** — home/explore/detail pages have nothing to point at yet.
-   This is now the single biggest gap blocking real frontend work beyond auth and the apply flow.
+9. ✅ Public catalogue: `GET /artworks`, `/artworks/{slug}`, `/artworks/featured`, `/artists`,
+   `/artists/{slug}` — home/explore/detail pages can go live against real data now. `sale`/
+   `auction` listings and price sorting won't have real data until Studio (Phase 3) lets an
+   artist create something other than a `display` listing.
 10. ✅ `artist_applications` + `application_works` tables (PRD §3.4); `/me/artist-application*`
     endpoints (rules 1–3)
 11. ✅ Admin review queue: `/admin/applications*` (rule 5–6, including the three-draft-artwork
     creation on approval) plus a session-cookie HTML admin panel at `/admin/*` (not in the
-    original PRD, added for operational convenience) covering the same actions.
+    original PRD, added for operational convenience) covering the same actions, now with PRD
+    rule 10 enforced before anything can become publicly visible.
 
 ### Phase 3 — Studio
 12. `/studio/artworks` CRUD, `/publish`, `/unlist`, listing-type rules 8–9
@@ -431,9 +534,13 @@ for what's actually done and for the Bearer-auth gap above.
 - Don't build against the RFC 7807 error shape yet (§2) — use `error.detail` as a string (it's
   sometimes a string, sometimes an object keyed by field name — see the artist-application
   `422`s above) and expect a follow-up change.
-- **No public catalogue exists** — no `/artworks`, `/artists`, `/testimonials`, nothing a homepage
-  or explore page could render real data from yet. Mock homepage/gallery data for now; that's the
-  next priority (Phase 2 item 9 above).
+- **The public catalogue is real now** — `GET /artworks` (filters, sort, cursor pagination),
+  `/artworks/{slug}`, `/artworks/featured` (homepage), `/artists`, `/artists/{slug}`. No auth
+  needed on any of these. Right now there's a handful of real published artworks under one
+  artist to build against on the live deployment; `sale`/`auction` listings and price-sorted
+  results will stay empty until Studio work lands, so don't build the "for sale" / "live auction"
+  sections expecting real data yet — `display`-listing browsing is what's real today.
+  `/testimonials` still doesn't exist (Phase 6).
 - Social login buttons (Apple/Google/Facebook), if they're in your designs, aren't backed by
   anything — there's no OAuth flow in the PRD or this codebase. Worth a separate conversation
   before wiring those up to anything real.
