@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Application — {{ application.full_name }}{% endblock %}
+{% block body %}
+  <nav><a href="/admin/applications">&larr; Back to applications</a></nav>
+  <h1>{{ application.full_name }}</h1>
+  <p><strong>Email:</strong> {{ applicant_email }}</p>
+  <p><strong>Location:</strong> {{ application.location }}</p>
+  <p><strong>Primary medium:</strong> {{ application.primary_medium }}</p>
+  <p><strong>Years practising:</strong> {{ application.years_practising or "—" }}</p>
+  <p><strong>Statement:</strong> {{ application.statement or "—" }}</p>
+  <p><strong>Status:</strong> <span class="badge">{{ application.status.value }}</span></p>
+  {% if application.rejection_reason %}
+    <p><strong>Rejection reason:</strong> {{ application.rejection_reason }}</p>
+  {% endif %}
+
+  <h2>Submitted works</h2>
+  <table>
+    <tr><th>#</th><th>Title</th><th>Year</th><th>Medium</th><th>Dimensions</th><th>Image</th></tr>
+    {% for work in works %}
+      <tr>
+        <td>{{ work.slot_index + 1 }}</td>
+        <td>{{ work.title }}</td>
+        <td>{{ work.year or "—" }}</td>
+        <td>{{ work.medium or "—" }}</td>
+        <td>{{ work.dimensions or "—" }}</td>
+        <td><a href="{{ work.image_url }}" target="_blank">view</a></td>
+      </tr>
+    {% endfor %}
+  </table>
+
+  {% if application.status.value in ("submitted", "under_review") %}
+    <h2>Decision</h2>
+    <form class="inline" method="post" action="/admin/applications/{{ application.id }}/approve">
+      <button type="submit">Approve</button>
+    </form>
+    <form method="post" action="/admin/applications/{{ application.id }}/reject">
+      <textarea name="reason" placeholder="Reason for rejection" required rows="3" cols="40"></textarea><br>
+      <button type="submit">Reject</button>
+    </form>
+  {% endif %}
+{% endblock %}

@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.api.v1 import auth, artist_applications, admin
 from app.admin_panel.auth import AdminAuthRequired
 from app.admin_panel import login_routes
+from app.admin_panel import application_routes
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -32,6 +33,7 @@ app.include_router(
 )
 app.include_router(admin.router, prefix=settings.API_V1_PREFIX, tags=["Admin"])
 app.include_router(login_routes.router, prefix="/admin", tags=["Admin Panel"])
+app.include_router(application_routes.router, prefix="/admin", tags=["Admin Panel"])
 
 @app.get("/health", tags=["Health"])
 async def health_check():

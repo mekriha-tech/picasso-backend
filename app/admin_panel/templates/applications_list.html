@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Artist Applications{% endblock %}
+{% block body %}
+  <nav>
+    <a href="/admin/applications">Applications</a><a href="/admin/artworks">Artworks</a>
+    <form class="inline" method="post" action="/admin/logout"><button type="submit">Log out</button></form>
+  </nav>
+  <h1>Artist Applications</h1>
+  <form method="get">
+    <select name="status" onchange="this.form.submit()">
+      <option value="">All statuses</option>
+      {% for s in statuses %}
+        <option value="{{ s }}" {% if current_status == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <table>
+    <tr><th>Applicant</th><th>Medium</th><th>Status</th><th>Submitted</th><th></th></tr>
+    {% for application, works, email in rows %}
+      <tr>
+        <td>{{ application.full_name }} ({{ email }})</td>
+        <td>{{ application.primary_medium }}</td>
+        <td><span class="badge">{{ application.status.value }}</span></td>
+        <td>{{ application.submitted_at or "—" }}</td>
+        <td><a href="/admin/applications/{{ application.id }}">Review</a></td>
+      </tr>
+    {% endfor %}
+  </table>
+{% endblock %}
