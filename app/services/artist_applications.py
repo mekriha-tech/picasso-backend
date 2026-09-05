@@ -9,6 +9,10 @@ from app.models.application_work import ApplicationWork
 from app.models.user import User, ArtistStatus
 from app.schemas.artist_application import ArtistApplicationIn, ApplicationWorkIn
 from app.services.cooldowns import is_in_reapply_cooldown, reapply_available_at
+from app.models.artist_profile import ArtistProfile
+from app.models.artwork import Artwork, ListingType, ArtworkStatus
+from app.models.artwork_image import ArtworkImage
+from app.services.slugs import generate_unique_slug
 
 
 class ApplicationNotEditableError(Exception):
@@ -159,3 +163,107 @@ async def submit_application(db: AsyncSession, application: ArtistApplication) -
     await db.commit()
     await db.refresh(application)
     return application
+
+
+async def claim_application(db: AsyncSession, application: ArtistApplication, admin: User) -> ArtistApplication:
+    if application.status != ApplicationStatus.submitted:
+        raise ApplicationNotEditableError("Only a submitted application can be claimed.")
+    application.status = ApplicationStatus.under_review
+    application.reviewed_by = admin.id
+    await db.commit()
+    await db.refresh(application)
+    return application
+
+
+async def approve_application(db: AsyncSession, application: ArtistApplication, admin: User) -> ArtistProfile:
+    if application.status not in (ApplicationStatus.submitted, ApplicationStatus.under_review):
+        raise ApplicationNotEditableError("Only a submitted or under-review application can be approved.")
+
+    works = await get_application_works(db, application.id)
+    if len(works) != 3:
+        raise ApplicationNotEditableError("Application no longer has exactly three works.")
+
+    profile_slugs_result = await db.execute(select(ArtistProfile.slug))
+    existing_profile_slugs = {row[0] for row in profile_slugs_result.all()}
+    profile_slug = generate_unique_slug(application.full_name, existing_profile_slugs)
+
+    profile = ArtistProfile(
+        user_id=application.user_id,
+        display_name=application.full_name,
+        slug=profile_slug,
+        primary_medium=application.primary_medium,
+        years_practising=application.years_practising,
+        statement=application.statement,
+        website_url=application.website_url,
+        instagram=application.instagram,
+    )
+    db.add(profile)
+    await db.flush()
+
+    artwork_slugs_result = await db.execute(select(Artwork.slug))
+    existing_artwork_slugs = {row[0] for row in artwork_slugs_result.all()}
+
+    for work in works:
+        artwork_slug = generate_unique_slug(work.title, existing_artwork_slugs)
+        existing_artwork_slugs.add(artwork_slug)
+        artwork = Artwork(
+            artist_id=profile.id,
+            title=work.title,
+            slug=artwork_slug,
+            year=work.year,
+            medium=work.medium,
+            dimensions=work.dimensions,
+            listing_type=ListingType.display,
+            status=ArtworkStatus.draft,
+            primary_image_url=work.image_url,
+        )
+        db.add(artwork)
+        await db.flush()
+        db.add(ArtworkImage(artwork_id=artwork.id, url=work.image_url, is_primary=True, sort_order=0))
+
+    application.status = ApplicationStatus.approved
+    application.reviewed_at = func.now()
+    application.reviewed_by = admin.id
+
+    result = await db.execute(select(User).where(User.id == application.user_id))
+    user = result.scalars().first()
+    user.artist_status = ArtistStatus.approved
+
+    await db.commit()
+    await db.refresh(profile)
+    return profile
+
+
+async def reject_application(
+    db: AsyncSession, application: ArtistApplication, admin: User, reason: str
+) -> ArtistApplication:
+    if application.status not in (ApplicationStatus.submitted, ApplicationStatus.under_review):
+        raise ApplicationNotEditableError("Only a submitted or under-review application can be rejected.")
+
+    application.status = ApplicationStatus.rejected
+    application.reviewed_at = func.now()
+    application.reviewed_by = admin.id
+    application.rejection_reason = reason
+
+    result = await db.execute(select(User).where(User.id == application.user_id))
+    user = result.scalars().first()
+    user.artist_status = ArtistStatus.rejected
+
+    await db.commit()
+    await db.refresh(application)
+    return application
+
+
+async def list_applications(
+    db: AsyncSession, status: ApplicationStatus | None = None
+) -> list[tuple[ArtistApplication, list, str]]:
+    query = select(ArtistApplication, User.email).join(User, User.id == ArtistApplication.user_id)
+    if status is not None:
+        query = query.where(ArtistApplication.status == status)
+    query = query.order_by(ArtistApplication.created_at.desc())
+    result = await db.execute(query)
+    rows = []
+    for application, email in result.all():
+        works = await get_application_works(db, application.id)
+        rows.append((application, works, email))
+    return rows
