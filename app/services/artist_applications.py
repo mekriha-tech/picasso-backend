@@ -1,10 +1,14 @@
 import uuid
+from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import func
 
 from app.models.artist_application import ArtistApplication, ApplicationStatus
 from app.models.application_work import ApplicationWork
+from app.models.user import User, ArtistStatus
 from app.schemas.artist_application import ArtistApplicationIn, ApplicationWorkIn
+from app.services.cooldowns import is_in_reapply_cooldown, reapply_available_at
 
 
 class ApplicationNotEditableError(Exception):
@@ -101,3 +105,57 @@ async def clear_application_work(db: AsyncSession, application: ArtistApplicatio
     if work is not None:
         await db.delete(work)
         await db.commit()
+
+
+class ApplicationValidationError(Exception):
+    def __init__(self, errors: dict[str, list[str]]):
+        self.errors = errors
+        super().__init__(str(errors))
+
+
+async def get_last_rejected_application(db: AsyncSession, user_id: uuid.UUID) -> ArtistApplication | None:
+    result = await db.execute(
+        select(ArtistApplication)
+        .where(ArtistApplication.user_id == user_id)
+        .where(ArtistApplication.status == ApplicationStatus.rejected)
+        .order_by(ArtistApplication.reviewed_at.desc())
+    )
+    return result.scalars().first()
+
+
+async def submit_application(db: AsyncSession, application: ArtistApplication) -> ArtistApplication:
+    if application.status != ApplicationStatus.draft:
+        raise ApplicationNotEditableError("This application has already been submitted.")
+
+    works = await get_application_works(db, application.id)
+    errors: dict[str, list[str]] = {}
+    if len(works) != 3:
+        errors["works"] = ["Submit three works…"]
+    if not application.primary_medium:
+        errors["primary_medium"] = ["Tell us your primary medium."]
+    if not application.full_name:
+        errors["full_name"] = ["Tell us your name."]
+    if not application.location:
+        errors["location"] = ["Tell us your location."]
+    if errors:
+        raise ApplicationValidationError(errors)
+
+    last_rejected = await get_last_rejected_application(db, application.user_id)
+    if last_rejected is not None and last_rejected.reviewed_at is not None:
+        now = datetime.now(timezone.utc)
+        if is_in_reapply_cooldown(last_rejected.reviewed_at, now):
+            available_at = reapply_available_at(last_rejected.reviewed_at)
+            raise ApplicationValidationError(
+                {"detail": [f"You can reapply on {available_at.date().isoformat()}."]}
+            )
+
+    application.status = ApplicationStatus.submitted
+    application.submitted_at = func.now()
+
+    result = await db.execute(select(User).where(User.id == application.user_id))
+    user = result.scalars().first()
+    user.artist_status = ArtistStatus.pending
+
+    await db.commit()
+    await db.refresh(application)
+    return application

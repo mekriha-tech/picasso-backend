@@ -109,3 +109,19 @@ async def clear_my_application_work(
         await applications_service.clear_application_work(db, application, slot)
     except ApplicationNotEditableError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.post("/me/artist-application/submit", response_model=ArtistApplicationOut)
+async def submit_my_application(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    application = await _get_own_open_application_or_404(db, current_user)
+    try:
+        application = await applications_service.submit_application(db, application)
+    except ApplicationNotEditableError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except applications_service.ApplicationValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors)
+    works = await applications_service.get_application_works(db, application.id)
+    return _to_out(application, works)
