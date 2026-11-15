@@ -552,6 +552,11 @@
             ],
             "title": "Statement"
           },
+          "teaser": {
+            "default": false,
+            "title": "Teaser",
+            "type": "boolean"
+          },
           "website_url": {
             "anyOf": [
               {
@@ -1228,6 +1233,11 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "teaser": {
+            "default": false,
+            "title": "Teaser",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1256,6 +1266,11 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "teaser": {
+            "default": false,
+            "title": "Teaser",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1789,6 +1804,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Artists Route",
         "tags": [
           "Catalogue"
@@ -1831,6 +1851,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Artist Route",
         "tags": [
           "Catalogue"
@@ -2005,6 +2030,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Artworks Route",
         "tags": [
           "Catalogue"
@@ -2068,6 +2098,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Artwork Route",
         "tags": [
           "Catalogue"

@@ -382,9 +382,33 @@ from the JSON API above:
 
 ### Public catalogue (`/artworks*`, `/artists*`)
 
-No auth on any of these — public, unauthenticated, matching PRD §4.2. Every query filters to
-`status IN ('published', 'reserved', 'sold')`; `draft`/`unlisted`/`removed` artworks never appear
-here regardless of other filters, no exceptions.
+Auth is **optional** on these. Every query filters to `status IN ('published', 'reserved',
+'sold')`; `draft`/`unlisted`/`removed` artworks never appear here regardless of other filters, no
+exceptions.
+
+**Logged-out visitors get a teaser, enforced by the server** (product decision, deliberately
+stricter than PRD §4.2's "public"): a UI-only limit could be bypassed by calling the API directly
+and downloading every work. Send `Authorization: Bearer <access_token>` whenever the user is
+logged in and you get the full catalogue; omit it and you get:
+- **The teaser set only**: the 12 newest works plus the homepage "featured" ones (3 per listing
+  type). Everything shown anonymously - the list, featured, an artist's `works` - is drawn from
+  that one set, so a card is never a dead end.
+- `GET /artworks`: only the default listing (newest first), optionally with `listing_type`.
+  `limit` is capped at 12, `next_cursor` is always `null`, and the response has `"teaser": true`.
+  Using **`cursor`, `q`, `category`, `artist_id`, `min_price`, `max_price`, or any `sort` other than
+  `newest`** → `401 {"detail": "Log in to see more of the gallery."}`.
+- `GET /artworks/{slug}`: a work outside the teaser → the same `401` (a slug that does not exist is
+  still a plain `404`).
+- `GET /artists`: `limit` capped at 12, no paging (`cursor` → `401`), `"teaser": true`.
+- `GET /artists/{slug}`: `works` only contains teaser works; `"teaser": true`.
+- A **present but invalid or expired** token is a `401 {"detail": "Not authenticated"}`, never a
+  silent downgrade to the teaser - refresh the token and retry.
+- Image resolution is **not** limited yet: there is no image pipeline (that needs the CDN/upload
+  work), so anonymous visitors currently get the same image URLs. The limit today is *which works*
+  and *how many*, not *how sharp*.
+- `GET /artworks/featured` is unchanged and needs no login (it is already a fixed small set).
+
+Branch on the `teaser` flag and on a `401` carrying the message above to show "Log in to see more".
 
 #### `GET /api/v1/artworks?listing_type=&category=&artist_id=&min_price=&max_price=&q=&sort=&limit=&cursor=`
 
@@ -405,7 +429,8 @@ All params optional.
   (`{"detail": "Invalid cursor"}`), never a 500
 - `200` →
   ```jsonc
-  { "items": [ /* artwork cards, see shape below */ ], "next_cursor": "opaque-string-or-null" }
+  { "items": [ /* artwork cards, see shape below */ ],
+    "next_cursor": "opaque-string-or-null", "teaser": false }
   ```
 
 **Artwork card shape** (used here, in `/artworks/featured`, and embedded in `/artists/{slug}`'s
@@ -433,6 +458,8 @@ Card shape plus `description`, `width_cm`, `height_cm` (also strings), `category
 and the full `images` array (`url`, `alt_text`, `sort_order`, `is_primary`) instead of just
 `primary_image_url`.
 - `200` → detail shape above
+- `401` → `{"detail": "Log in to see more of the gallery."}` when the caller is logged out and the
+  work is outside the teaser set (see above)
 - `404` → `{"detail": "Artwork not found"}` (includes non-public statuses — a `draft` artwork's
   slug 404s here even though `GET /admin/artworks` can see it)
 
@@ -452,7 +479,7 @@ no reason to show an empty directory entry for someone with nothing published ye
   { "items": [
     { "slug": "elena-frost", "display_name": "Elena Frost", "primary_medium": "Oil painting",
       "cover_image_url": null, "is_featured": false }
-  ], "next_cursor": "opaque-string-or-null" }
+  ], "next_cursor": "opaque-string-or-null", "teaser": false }
   ```
 
 #### `GET /api/v1/artists/{slug}`
