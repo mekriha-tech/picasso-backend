@@ -17,3 +17,8 @@ Rules:
 - Validation error copy in §4.6 is user-facing and fixed; reuse it verbatim.
 - Business rules live in the service layer, not in route handlers.
 - Bidding and purchase are concurrency-critical: row locks per §2 rules 15 and 19.
+
+Working with the frontend: see docs/COLLABORATION.md. Any API change must regenerate
+docs/openapi.json (`python scripts/export_openapi.py`) and update docs/API_REFERENCE.md in the
+same PR; tests/test_openapi_contract.py enforces the first. Backend work goes through the
+`backend-dev` agent in .claude/agents/.
