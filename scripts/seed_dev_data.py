@@ -52,6 +52,19 @@ _APPLICANT_BASE = [
 ]
 
 # Applicants reuse the tail of the image pool for their three sample works.
+TESTIMONIALS = [
+    dict(author_name="Priya Nair", author_role="Collector, Bengaluru", sort_order=1, is_published=True,
+         quote="I found a piece for my study without leaving the sofa, and the VR walk-through made "
+               "me confident about its scale."),
+    dict(author_name="Meera Iyer", author_role="Artist", sort_order=2, is_published=True,
+         quote="Listing my work was simple, and the auction format brought it in front of people "
+               "I would never have reached."),
+    dict(author_name="Tom Alvarez", author_role="Gallery visitor", sort_order=3, is_published=True,
+         quote="The virtual exhibitions feel like a real gallery afternoon."),
+    dict(author_name="Draft Example", author_role=None, sort_order=4, is_published=False,
+         quote="Unpublished on purpose: must never appear on the public endpoint."),
+]
+
 PENDING_APPLICANTS = []
 for _n, _base in enumerate(_APPLICANT_BASE):
     _p = {k: v for k, v in _base.items() if k != "work_titles"}
