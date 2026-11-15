@@ -41,6 +41,18 @@ async def get_current_user(
     return user
 
 
+async def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """None for an anonymous request. A token that is present but invalid or expired is a 401,
+    not a silent downgrade to anonymous, so the client knows to refresh instead of quietly
+    showing a logged-in user the logged-out teaser."""
+    if credentials is None:
+        return None
+    return await get_current_user(credentials, db)
+
+
 async def get_current_admin_user(
     current_user: User = Depends(get_current_user),
 ) -> User:

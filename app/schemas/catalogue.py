@@ -45,6 +45,7 @@ class ArtworkDetailOut(ArtworkCardOut):
 class PaginatedArtworksOut(BaseModel):
     items: list[ArtworkCardOut]
     next_cursor: str | None
+    teaser: bool = False
 
 
 class FeaturedArtworksOut(BaseModel):
@@ -68,8 +69,10 @@ class ArtistDetailOut(ArtistCardOut):
     instagram: str | None
     approved_at: datetime
     works: list[ArtworkCardOut]
+    teaser: bool = False
 
 
 class PaginatedArtistsOut(BaseModel):
     items: list[ArtistCardOut]
     next_cursor: str | None
+    teaser: bool = False

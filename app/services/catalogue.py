@@ -9,8 +9,13 @@ from app.models.artwork import Artwork, ArtworkStatus, ListingType
 from app.models.artwork_image import ArtworkImage
 from app.services.badges import compute_badge
 from app.services.pagination import encode_cursor, decode_cursor
+from app.services.teaser import TEASER_LIMIT
 
 PUBLIC_STATUSES = (ArtworkStatus.published, ArtworkStatus.reserved, ArtworkStatus.sold)
+
+# Newest first, with id as a deterministic tiebreak (many rows can share a NULL/equal
+# published_at); get_featured_artworks and get_teaser_artwork_ids must agree on this order.
+_NEWEST_FIRST = (Artwork.published_at.desc().nullslast(), Artwork.id.desc())
 
 SORT_COLUMNS = {
     "newest": Artwork.published_at,
@@ -59,6 +64,7 @@ async def list_public_artworks(
     sort: str = "newest",
     limit: int = 24,
     cursor: str | None = None,
+    only_ids: set[uuid.UUID] | None = None,
 ) -> tuple[list[dict], str | None]:
     sort_col = SORT_COLUMNS.get(sort, Artwork.published_at)
     descending = sort != "price_asc"
@@ -68,6 +74,8 @@ async def list_public_artworks(
         .join(ArtistProfile, Artwork.artist_id == ArtistProfile.id)
         .where(Artwork.status.in_(PUBLIC_STATUSES))
     )
+    if only_ids is not None:
+        query = query.where(Artwork.id.in_(list(only_ids)))
     if listing_type is not None:
         query = query.where(Artwork.listing_type == listing_type)
     if category is not None:
@@ -129,13 +137,32 @@ async def list_public_artworks(
     return items, next_cursor
 
 
-async def get_artwork_by_slug(db: AsyncSession, slug: str) -> dict | None:
+async def get_teaser_artwork_ids(db: AsyncSession) -> set[uuid.UUID]:
+    """The works a logged-out visitor may see anywhere: the newest TEASER_LIMIT overall plus
+    the three "featured" per listing type shown on the homepage."""
+    base = select(Artwork.id).where(Artwork.status.in_(PUBLIC_STATUSES))
+    ids: set[uuid.UUID] = set()
+    newest = await db.execute(base.order_by(*_NEWEST_FIRST).limit(TEASER_LIMIT))
+    ids.update(row[0] for row in newest.all())
+    for lt in (ListingType.sale, ListingType.auction, ListingType.display):
+        featured = await db.execute(
+            base.where(Artwork.listing_type == lt).order_by(*_NEWEST_FIRST).limit(3)
+        )
+        ids.update(row[0] for row in featured.all())
+    return ids
+
+
+async def get_artwork_by_slug(
+    db: AsyncSession, slug: str, only_ids: set[uuid.UUID] | None = None
+) -> dict | None:
     query = (
         select(Artwork, ArtistProfile.slug, ArtistProfile.display_name)
         .join(ArtistProfile, Artwork.artist_id == ArtistProfile.id)
         .where(Artwork.slug == slug)
         .where(Artwork.status.in_(PUBLIC_STATUSES))
     )
+    if only_ids is not None:
+        query = query.where(Artwork.id.in_(list(only_ids)))
     row = (await db.execute(query)).first()
     if row is None:
         return None
@@ -183,7 +210,7 @@ async def get_featured_artworks(db: AsyncSession) -> dict:
             .join(ArtistProfile, Artwork.artist_id == ArtistProfile.id)
             .where(Artwork.status.in_(PUBLIC_STATUSES))
             .where(Artwork.listing_type == lt)
-            .order_by(Artwork.published_at.desc().nullslast())
+            .order_by(*_NEWEST_FIRST)
             .limit(3)
         )
         rows = (await db.execute(query)).all()
@@ -244,7 +271,9 @@ async def list_artists(
     return items, next_cursor
 
 
-async def get_artist_by_slug(db: AsyncSession, slug: str) -> dict | None:
+async def get_artist_by_slug(
+    db: AsyncSession, slug: str, only_ids: set[uuid.UUID] | None = None
+) -> dict | None:
     artist = (
         await db.execute(select(ArtistProfile).where(ArtistProfile.slug == slug))
     ).scalars().first()
@@ -256,8 +285,10 @@ async def get_artist_by_slug(db: AsyncSession, slug: str) -> dict | None:
         .join(ArtistProfile, Artwork.artist_id == ArtistProfile.id)
         .where(Artwork.artist_id == artist.id)
         .where(Artwork.status.in_(PUBLIC_STATUSES))
-        .order_by(Artwork.published_at.desc().nullslast())
+        .order_by(*_NEWEST_FIRST)
     )
+    if only_ids is not None:
+        works_query = works_query.where(Artwork.id.in_(list(only_ids)))
     rows = (await db.execute(works_query)).all()
     works = [_artwork_card_dict(a, s, n) for a, s, n in rows]
 
