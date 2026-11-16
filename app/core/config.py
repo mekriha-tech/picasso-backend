@@ -27,6 +27,26 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
 
+    # Cloudflare R2 artwork image storage. All optional: the app boots without them and the
+    # image upload endpoints answer 503 until all five are set.
+    R2_ACCOUNT_ID: str | None = None
+    R2_ACCESS_KEY_ID: str | None = None
+    R2_SECRET_ACCESS_KEY: str | None = None
+    R2_BUCKET: str | None = None
+    R2_PUBLIC_BASE_URL: str | None = None
+
+    @property
+    def r2_configured(self) -> bool:
+        return all(
+            (
+                self.R2_ACCOUNT_ID,
+                self.R2_ACCESS_KEY_ID,
+                self.R2_SECRET_ACCESS_KEY,
+                self.R2_BUCKET,
+                self.R2_PUBLIC_BASE_URL,
+            )
+        )
+
     # Refresh-token cookie must be Secure everywhere except local dev (PRD §3.9)
     @computed_field
     @property

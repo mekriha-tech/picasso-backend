@@ -348,6 +348,45 @@ returns a clean `422` rather than a query-param-style FastAPI error).
   draft that fails this check needs a direct DB edit to become publishable. Worth flagging to
   whoever's testing the admin panel, since it's a real dead end today.
 
+#### Artwork images (admin, Bearer auth)
+
+Images are stored in Cloudflare R2 and served from its public URL, never through the API. Each
+upload produces two WebP files (full size, long edge at most 2400px; preview, at most 800px), with
+EXIF/GPS removed, stored under random keys prefixed with the deployment's `ENVIRONMENT`
+(`production/artworks/<random>.webp`). `artworks.primary_image_url` always equals the primary
+image's full-size `url`. Every image response item has this shape (`ArtworkImageOut`):
+
+```json
+{"id": "uuid", "artwork_id": "uuid", "url": "https://.../production/artworks/<random>.webp",
+ "preview_url": "https://.../production/artworks/<random>.webp", "alt_text": null,
+ "sort_order": 0, "is_primary": true, "width_px": 2400, "height_px": 1600}
+```
+
+`preview_url` is `null` for older rows that use an external URL. Common errors on all routes:
+`401`/`403` (not an admin), `404` `{"detail": "Artwork not found"}` (also for soft-deleted artworks).
+
+- `GET /api/v1/admin/artworks/{id}/images` -> `200` `list[ArtworkImageOut]` ordered by `sort_order`.
+- `POST /api/v1/admin/artworks/{id}/images` -> `201` `ArtworkImageOut`. `multipart/form-data` with
+  one `file` (JPEG, PNG or WebP; at most 15 MB; at most 40 megapixels) and optional `alt_text`.
+  The first image of an artwork becomes primary. The client's filename and Content-Type are
+  ignored; the bytes must decode as a real image.
+  - `413` `{"detail": "Image is too large. The maximum size is 15 MB."}` (or the megapixel message)
+  - `422` `{"detail": "That file is not a valid JPEG, PNG or WebP image."}`
+  - `409` `{"detail": "An artwork can have at most 12 images."}`
+  - `503` `{"detail": "Image storage is not configured."}` (R2 env vars not set)
+  - `502` `{"detail": "Could not store the image."}` (R2 rejected the write; nothing is saved)
+- `PUT /api/v1/admin/artworks/{id}/images/order` body `{"image_ids": ["uuid", ...]}` -> `200`
+  `list[ArtworkImageOut]`. The list must contain every image of the artwork exactly once, else
+  `422`. `sort_order` becomes the list position.
+- `POST /api/v1/admin/artworks/{id}/images/{image_id}/primary` -> `200` `list[ArtworkImageOut]`;
+  `404` `{"detail": "Image not found"}`.
+- `DELETE /api/v1/admin/artworks/{id}/images/{image_id}` -> `204`. Removes both R2 objects, but
+  only ones under this environment's own prefix and `R2_PUBLIC_BASE_URL`; external URLs are left
+  alone. If the deleted image was primary, the next image becomes primary.
+  - `409` `{"detail": "Artwork needs at least one image while it is published, reserved or sold."}`
+    (PRD rule 10)
+  - `404` `{"detail": "Image not found"}`; `502` if R2 fails (the image is kept; retry is safe).
+
 ---
 
 ### HTML admin panel (`/admin/*`)

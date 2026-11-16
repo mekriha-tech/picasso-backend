@@ -19,3 +19,22 @@ class ArtworkOut(BaseModel):
 
 class ArtworkStatusUpdate(BaseModel):
     status: str
+
+
+class ArtworkImageOut(BaseModel):
+    id: uuid.UUID
+    artwork_id: uuid.UUID
+    url: str
+    preview_url: str | None
+    alt_text: str | None
+    sort_order: int
+    is_primary: bool
+    width_px: int | None
+    height_px: int | None
+
+    class Config:
+        from_attributes = True
+
+
+class ImageOrderUpdate(BaseModel):
+    image_ids: list[uuid.UUID]

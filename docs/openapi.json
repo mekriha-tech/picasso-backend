@@ -813,7 +813,7 @@
           },
           "images": {
             "items": {
-              "$ref": "#/components/schemas/ArtworkImageOut"
+              "$ref": "#/components/schemas/app__schemas__catalogue__ArtworkImageOut"
             },
             "title": "Images",
             "type": "array"
@@ -940,41 +940,6 @@
         "title": "ArtworkDetailOut",
         "type": "object"
       },
-      "ArtworkImageOut": {
-        "properties": {
-          "alt_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Alt Text"
-          },
-          "is_primary": {
-            "title": "Is Primary",
-            "type": "boolean"
-          },
-          "sort_order": {
-            "title": "Sort Order",
-            "type": "integer"
-          },
-          "url": {
-            "title": "Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "url",
-          "alt_text",
-          "sort_order",
-          "is_primary"
-        ],
-        "title": "ArtworkImageOut",
-        "type": "object"
-      },
       "ArtworkOut": {
         "properties": {
           "artist_id": {
@@ -1058,6 +1023,31 @@
         "title": "ArtworkStatusUpdate",
         "type": "object"
       },
+      "Body_upload_artwork_image_route_api_v1_admin_artworks__artwork_id__images_post": {
+        "properties": {
+          "alt_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alt Text"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_artwork_image_route_api_v1_admin_artworks__artwork_id__images_post",
+        "type": "object"
+      },
       "EmailCheckRequest": {
         "properties": {
           "email": {
@@ -1127,6 +1117,23 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImageOrderUpdate": {
+        "properties": {
+          "image_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Image Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "image_ids"
+        ],
+        "title": "ImageOrderUpdate",
         "type": "object"
       },
       "ListingType": {
@@ -1468,6 +1475,124 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "app__schemas__artwork__ArtworkImageOut": {
+        "properties": {
+          "alt_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alt Text"
+          },
+          "artwork_id": {
+            "format": "uuid",
+            "title": "Artwork Id",
+            "type": "string"
+          },
+          "height_px": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Px"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_primary": {
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "preview_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Url"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "width_px": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width Px"
+          }
+        },
+        "required": [
+          "id",
+          "artwork_id",
+          "url",
+          "preview_url",
+          "alt_text",
+          "sort_order",
+          "is_primary",
+          "width_px",
+          "height_px"
+        ],
+        "title": "ArtworkImageOut",
+        "type": "object"
+      },
+      "app__schemas__catalogue__ArtworkImageOut": {
+        "properties": {
+          "alt_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alt Text"
+          },
+          "is_primary": {
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "alt_text",
+          "sort_order",
+          "is_primary"
+        ],
+        "title": "ArtworkImageOut",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -1806,6 +1931,289 @@
           }
         ],
         "summary": "Update Artwork Status Route",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/v1/admin/artworks/{artwork_id}/images": {
+      "get": {
+        "operationId": "list_artwork_images_route_api_v1_admin_artworks__artwork_id__images_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artwork_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artwork Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/app__schemas__artwork__ArtworkImageOut"
+                  },
+                  "title": "Response List Artwork Images Route Api V1 Admin Artworks  Artwork Id  Images Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Artwork Images Route",
+        "tags": [
+          "Admin"
+        ]
+      },
+      "post": {
+        "operationId": "upload_artwork_image_route_api_v1_admin_artworks__artwork_id__images_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artwork_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artwork Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_artwork_image_route_api_v1_admin_artworks__artwork_id__images_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__schemas__artwork__ArtworkImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Artwork Image Route",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/v1/admin/artworks/{artwork_id}/images/order": {
+      "put": {
+        "operationId": "reorder_artwork_images_route_api_v1_admin_artworks__artwork_id__images_order_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artwork_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artwork Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageOrderUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/app__schemas__artwork__ArtworkImageOut"
+                  },
+                  "title": "Response Reorder Artwork Images Route Api V1 Admin Artworks  Artwork Id  Images Order Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reorder Artwork Images Route",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/v1/admin/artworks/{artwork_id}/images/{image_id}": {
+      "delete": {
+        "operationId": "delete_artwork_image_route_api_v1_admin_artworks__artwork_id__images__image_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artwork_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artwork Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Artwork Image Route",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/v1/admin/artworks/{artwork_id}/images/{image_id}/primary": {
+      "post": {
+        "operationId": "set_primary_artwork_image_route_api_v1_admin_artworks__artwork_id__images__image_id__primary_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artwork_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artwork Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/app__schemas__artwork__ArtworkImageOut"
+                  },
+                  "title": "Response Set Primary Artwork Image Route Api V1 Admin Artworks  Artwork Id  Images  Image Id  Primary Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Primary Artwork Image Route",
         "tags": [
           "Admin"
         ]
