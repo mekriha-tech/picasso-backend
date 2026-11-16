@@ -152,11 +152,12 @@ async def seed(db, env: dict[str, str]) -> dict[str, int]:
     from app.models.artist_profile import ArtistProfile
     from app.models.artwork import Artwork, ArtworkStatus, ListingType
     from app.models.artwork_image import ArtworkImage
+    from app.models.testimonial import Testimonial
     from app.services.slugs import slugify
     import seed_dev_data as data
 
     counts = {"users_created": 0, "users_updated": 0, "artists": 0, "applicants": 0,
-              "artworks_created": 0, "artworks_updated": 0, "images": 0}
+              "artworks_created": 0, "artworks_updated": 0, "images": 0, "testimonials": 0}
     now = datetime.now(timezone.utc)
 
     def tally(created: bool):
@@ -260,6 +261,21 @@ async def seed(db, env: dict[str, str]) -> dict[str, int]:
                                 sort_order=k, is_primary=(k == 0)))
             counts["images"] += 1
         await db.flush()
+
+    # Testimonials have no natural key in the schema; match on author_name so re-runs update in place.
+    for t in data.TESTIMONIALS:
+        testimonial = (await db.execute(
+            select(Testimonial).where(Testimonial.author_name == t["author_name"])
+        )).scalars().first()
+        if testimonial is None:
+            testimonial = Testimonial(author_name=t["author_name"])
+            db.add(testimonial)
+        testimonial.author_role = t["author_role"]
+        testimonial.quote = t["quote"]
+        testimonial.sort_order = t["sort_order"]
+        testimonial.is_published = t["is_published"]
+        counts["testimonials"] += 1
+    await db.flush()
 
     await db.commit()
     return counts

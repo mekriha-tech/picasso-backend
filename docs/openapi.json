@@ -1315,6 +1315,68 @@
         "title": "RejectRequest",
         "type": "object"
       },
+      "TestimonialOut": {
+        "properties": {
+          "author_name": {
+            "title": "Author Name",
+            "type": "string"
+          },
+          "author_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Role"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "author_name",
+          "quote"
+        ],
+        "title": "TestimonialOut",
+        "type": "object"
+      },
+      "TestimonialsOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TestimonialOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TestimonialsOut",
+        "type": "object"
+      },
       "UserCreate": {
         "properties": {
           "email": {
@@ -2662,6 +2724,27 @@
         "summary": "Set My Application Work",
         "tags": [
           "Artist Application"
+        ]
+      }
+    },
+    "/api/v1/testimonials": {
+      "get": {
+        "operationId": "list_testimonials_route_api_v1_testimonials_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestimonialsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Testimonials Route",
+        "tags": [
+          "Testimonials"
         ]
       }
     },

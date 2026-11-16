@@ -492,6 +492,22 @@ anything published, just with an empty `works` array.
 - `200` → detail shape above
 - `404` → `{"detail": "Artist not found"}`
 
+#### `GET /api/v1/testimonials`
+
+Homepage testimonials block. **Public, no auth needed, and not subject to the logged-out teaser**
+(testimonials are marketing copy, not catalogue content). Returns only `is_published = true` rows,
+ordered by `sort_order` ascending (ties broken by id). No params, no paging. Sent with
+`Cache-Control: public, max-age=60`. There is no admin CRUD yet; rows are seeded by hand.
+- `200` →
+  ```jsonc
+  { "items": [
+    { "id": "uuid", "author_name": "Priya Nair", "author_role": "Collector, Bengaluru",
+      "avatar_url": null, "quote": "..." }
+  ] }
+  ```
+  `author_role` and `avatar_url` may be `null`. An empty table is `200 {"items": []}`, so hide the
+  block when `items` is empty.
+
 ---
 
 ## 4. Priority build plan
@@ -542,7 +558,7 @@ for what's actually done and for the Bearer-auth gap above.
 
 ### Phase 6 — Everything else
 21. `/me/bids`, `/me/orders`, `/me/wishlist`, `/me/profile`, `/me/notifications`
-22. `/exhibitions`, `/testimonials`
+22. `/exhibitions` (`/testimonials` is done)
 23. Remaining notification jobs (outbid, ending-soon reminders)
 
 ---
@@ -567,7 +583,7 @@ for what's actually done and for the Bearer-auth gap above.
   artist to build against on the live deployment; `sale`/`auction` listings and price-sorted
   results will stay empty until Studio work lands, so don't build the "for sale" / "live auction"
   sections expecting real data yet — `display`-listing browsing is what's real today.
-  `/testimonials` still doesn't exist (Phase 6).
+  `GET /testimonials` is real now (see §3); `/exhibitions` still doesn't exist (Phase 6).
 - Social login buttons (Apple/Google/Facebook), if they're in your designs, aren't backed by
   anything — there's no OAuth flow in the PRD or this codebase. Worth a separate conversation
   before wiring those up to anything real.

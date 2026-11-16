@@ -16,6 +16,7 @@ from app.models.application_work import ApplicationWork
 from app.models.artist_profile import ArtistProfile
 from app.models.artwork import Artwork
 from app.models.artwork_image import ArtworkImage
+from app.models.testimonial import Testimonial
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
