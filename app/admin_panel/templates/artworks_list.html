@@ -3,9 +3,10 @@
 {% block body %}
   <nav>
     <a href="/admin/applications">Applications</a><a href="/admin/artworks">Artworks</a>
-    <form class="inline" method="post" action="/admin/logout"><button type="submit">Log out</button></form>
+    <form class="inline" method="post" action="/admin/logout">{{ csrf_field(request) }}<button type="submit">Log out</button></form>
   </nav>
-  <h1>Artworks</h1>
+  <h1>Artworks <a href="/admin/artworks/new" style="font-size:0.5em">+ New artwork</a></h1>
+  {% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
   <form method="get">
     <select name="status" onchange="this.form.submit()">
@@ -19,12 +20,12 @@
     <tr><th>Title</th><th>Artist</th><th>Listing type</th><th>Status</th><th>Change status</th></tr>
     {% for artwork, artist_display_name in artworks %}
       <tr>
-        <td>{{ artwork.title }}</td>
+        <td><a href="/admin/artworks/{{ artwork.id }}/edit">{{ artwork.title }}</a></td>
         <td>{{ artist_display_name }}</td>
         <td>{{ artwork.listing_type.value }}</td>
         <td><span class="badge">{{ artwork.status.value }}</span></td>
         <td>
-          <form class="inline" method="post" action="/admin/artworks/{{ artwork.id }}/status">
+          <form class="inline" method="post" action="/admin/artworks/{{ artwork.id }}/status">{{ csrf_field(request) }}
             <select name="new_status">
               {% for s in statuses %}
                 <option value="{{ s }}" {% if artwork.status.value == s %}selected{% endif %}>{{ s }}</option>

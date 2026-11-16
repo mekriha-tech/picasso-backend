@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin_panel.auth import authenticate_admin, get_session_admin_user
+from app.admin_panel.csrf import verify_csrf
 from app.admin_panel.templates import templates
 from app.db.session import get_db
 from app.models.user import User
@@ -35,11 +36,12 @@ async def login_submit(
             {"error": "Invalid email, password, or this account isn't an admin."},
             status_code=401,
         )
+    request.session.pop("csrf_token", None)  # fresh CSRF token per login
     request.session["admin_user_id"] = str(user.id)
     return RedirectResponse(url="/admin/applications", status_code=303)
 
 
-@router.post("/logout")
+@router.post("/logout", dependencies=[Depends(verify_csrf)])
 async def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/admin/login", status_code=303)

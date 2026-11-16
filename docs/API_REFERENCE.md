@@ -343,10 +343,7 @@ returns a clean `422` rather than a query-param-style FastAPI error).
 - `409` → `{"detail": "Artwork needs a title, year, and medium before it can be published."}` or
   `{"detail": "Artwork needs at least one image before it can be published."}` — **PRD rule 10**:
   enforced when the target status is `published`, `reserved`, or `sold` (any status the public
-  catalogue below can show), not just `published` specifically. There is currently **no
-  in-product way to fix a draft's missing fields** — no Studio edit endpoint exists yet — so a
-  draft that fails this check needs a direct DB edit to become publishable. Worth flagging to
-  whoever's testing the admin panel, since it's a real dead end today.
+  catalogue below can show), not just `published` specifically. A draft's missing fields can be fixed in the HTML admin panel (edit page) and images added via the image endpoints above.
 
 #### Artwork images (admin, Bearer auth)
 
@@ -416,6 +413,21 @@ from the JSON API above:
   - `GET /admin/artworks` (optional `?status=`, same invalid-value-is-no-filter behaviour) — list
     view showing title, artist, listing type, and status, with an inline status-change form per
     row.
+  - `GET /admin/artworks/new`, `POST /admin/artworks/new` - create a draft (artist, title, year,
+    medium, dimensions, width/height cm, category, listing type, price, description). Validation
+    errors re-render the form with `422`. Listing type is `sale` or `display`; `auction` is not
+    offered until auctions exist (PRD rule 8). `sale` needs a price; `display` must have none. The
+    slug is generated from the title and never changes on edit.
+  - `GET/POST /admin/artworks/{id}/edit` - edit details, change status, manage images. Published,
+    reserved or sold artworks must keep title, year and medium (rule 10). Sold artworks cannot
+    change listing type or price.
+  - `POST /admin/artworks/{id}/images` (multi-file `files`), `POST .../images/{image_id}/delete`,
+    `.../primary`, `.../move` (`direction=up|down`) - same service as the JSON image endpoints.
+    Deleting the last image of a published/reserved/sold artwork is refused.
+  - `GET/POST /admin/artworks/{id}/delete` - confirmation page, then soft delete (`deleted_at` set,
+    status `removed`; images stay in storage). Sold and reserved artworks are refused.
+  - **CSRF:** every POST form in the panel (except login) carries a `csrf_token` hidden field tied
+    to the session cookie; a missing or wrong token gets `403`.
 
 ---
 

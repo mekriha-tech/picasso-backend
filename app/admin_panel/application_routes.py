@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin_panel.auth import get_session_admin_user
+from app.admin_panel.csrf import verify_csrf
 from app.admin_panel.templates import templates
 from app.db.session import get_db
 from app.models.artist_application import ApplicationStatus
@@ -66,7 +67,7 @@ async def application_detail(
     )
 
 
-@router.post("/applications/{application_id}/approve")
+@router.post("/applications/{application_id}/approve", dependencies=[Depends(verify_csrf)])
 async def approve_application_form(
     application_id: uuid.UUID,
     admin: User = Depends(get_session_admin_user),
@@ -84,7 +85,7 @@ async def approve_application_form(
     return RedirectResponse(url="/admin/applications", status_code=303)
 
 
-@router.post("/applications/{application_id}/reject")
+@router.post("/applications/{application_id}/reject", dependencies=[Depends(verify_csrf)])
 async def reject_application_form(
     application_id: uuid.UUID,
     reason: str = Form(...),
