@@ -173,13 +173,13 @@ def test_delete_leaves_external_and_other_environment_objects_alone(harness):
                     ArtworkImage(
                         artwork_id=aid, url=st.public_url("production/artworks/z.webp"),
                         preview_url=st.public_url("production/artworks/zp.webp"),
-                        storage_key="production/artworks/z.webp",
+                        storage_provider="r2", storage_key="production/artworks/z.webp",
                         preview_storage_key="production/artworks/zp.webp", sort_order=1,
                     ),
                     # our prefix but the URL points at a different host
                     ArtworkImage(
                         artwork_id=aid, url="https://evil.example/staging/artworks/q.webp",
-                        storage_key="staging/artworks/q.webp", sort_order=2,
+                        storage_provider="r2", storage_key="staging/artworks/q.webp", sort_order=2,
                     ),
                 ]
             )
