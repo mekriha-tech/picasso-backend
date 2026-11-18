@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Delete artwork{% endblock %}
+{% block body %}
+  <nav>
+    <a href="/admin/applications">Applications</a><a href="/admin/artworks">Artworks</a>
+    <form class="inline" method="post" action="/admin/logout">{{ csrf_field(request) }}<button type="submit">Log out</button></form>
+  </nav>
+  <h1>Delete artwork</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <p>Delete <strong>{{ artwork.title }}</strong> by {{ artist_name }}? It will be removed from the
+    public catalogue. This is a soft delete: the record and its images are kept.</p>
+  <form method="post" action="/admin/artworks/{{ artwork.id }}/delete">
+    {{ csrf_field(request) }}
+    <button type="submit" class="danger">Yes, delete it</button>
+    <a href="/admin/artworks/{{ artwork.id }}/edit">Cancel</a>
+  </form>
+{% endblock %}

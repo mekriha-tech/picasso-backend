@@ -18,6 +18,12 @@ class ArtworkImage(Base):
         UUID(as_uuid=True), ForeignKey("artworks.id", ondelete="CASCADE"), nullable=False
     )
     url: Mapped[str] = mapped_column(Text, nullable=False)
+    # Smaller derivative (~800px). NULL for rows that predate R2 storage (seeded external URLs).
+    preview_url: Mapped[str | None] = mapped_column(Text)
+    # Object keys in the bucket, kept so delete never has to parse them back out of a URL.
+    # NULL when the image is not stored in our bucket.
+    storage_key: Mapped[str | None] = mapped_column(Text)
+    preview_storage_key: Mapped[str | None] = mapped_column(Text)
     alt_text: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(SmallInteger, default=0, server_default="0")
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

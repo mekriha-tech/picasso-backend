@@ -3,7 +3,7 @@
 {% block body %}
   <nav>
     <a href="/admin/applications">Applications</a><a href="/admin/artworks">Artworks</a>
-    <form class="inline" method="post" action="/admin/logout"><button type="submit">Log out</button></form>
+    <form class="inline" method="post" action="/admin/logout">{{ csrf_field(request) }}<button type="submit">Log out</button></form>
   </nav>
   <h1>Artist Applications</h1>
   {% if error %}<p class="error">{{ error }}</p>{% endif %}

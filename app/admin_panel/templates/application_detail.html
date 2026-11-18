@@ -31,10 +31,10 @@
 
   {% if application.status.value in ("submitted", "under_review") %}
     <h2>Decision</h2>
-    <form class="inline" method="post" action="/admin/applications/{{ application.id }}/approve">
+    <form class="inline" method="post" action="/admin/applications/{{ application.id }}/approve">{{ csrf_field(request) }}
       <button type="submit">Approve</button>
     </form>
-    <form method="post" action="/admin/applications/{{ application.id }}/reject">
+    <form method="post" action="/admin/applications/{{ application.id }}/reject">{{ csrf_field(request) }}
       <textarea name="reason" placeholder="Reason for rejection" required rows="3" cols="40"></textarea><br>
       <button type="submit">Reject</button>
     </form>

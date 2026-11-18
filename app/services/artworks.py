@@ -28,6 +28,7 @@ async def list_artworks(
     query = (
         select(Artwork, ArtistProfile.display_name)
         .join(ArtistProfile, Artwork.artist_id == ArtistProfile.id)
+        .where(Artwork.deleted_at.is_(None))
     )
     if status is not None:
         query = query.where(Artwork.status == status)
@@ -37,7 +38,8 @@ async def list_artworks(
 
 
 async def get_artwork_by_id(db: AsyncSession, artwork_id: uuid.UUID) -> Artwork | None:
-    result = await db.execute(select(Artwork).where(Artwork.id == artwork_id))
+    result = await db.execute(select(Artwork).where(Artwork.id == artwork_id, Artwork.deleted_at.is_(None))
+    )
     return result.scalars().first()
 
 
