@@ -347,10 +347,15 @@ returns a clean `422` rather than a query-param-style FastAPI error).
 
 #### Artwork images (admin, Bearer auth)
 
-Images are stored in Cloudflare R2 and served from its public URL, never through the API. Each
+Images are stored in an external object store (Cloudinary, Cloudflare R2 or any S3-compatible
+bucket, chosen by the server's `STORAGE_BACKEND`; see `docs/STORAGE.md`) and served from its public
+URL, never through the API. The URL host therefore depends on the provider and can change when the
+store is migrated (the old URLs are updated in the database), so never hard-code it; use the `url`
+and `preview_url` values as returned. Each
 upload produces two WebP files (full size, long edge at most 2400px; preview, at most 800px), with
 EXIF/GPS removed, stored under random keys prefixed with the deployment's `ENVIRONMENT`
-(`production/artworks/<random>.webp`). `artworks.primary_image_url` always equals the primary
+(`production/artworks/<random>.webp`; on Cloudinary the delivery URL is the same path under
+`https://res.cloudinary.com/<cloud>/image/upload/`). `artworks.primary_image_url` always equals the primary
 image's full-size `url`. Every image response item has this shape (`ArtworkImageOut`):
 
 ```json
@@ -370,19 +375,20 @@ image's full-size `url`. Every image response item has this shape (`ArtworkImage
   - `413` `{"detail": "Image is too large. The maximum size is 15 MB."}` (or the megapixel message)
   - `422` `{"detail": "That file is not a valid JPEG, PNG or WebP image."}`
   - `409` `{"detail": "An artwork can have at most 12 images."}`
-  - `503` `{"detail": "Image storage is not configured."}` (R2 env vars not set)
-  - `502` `{"detail": "Could not store the image."}` (R2 rejected the write; nothing is saved)
+  - `503` `{"detail": "Image storage is not configured."}` (no storage provider configured)
+  - `502` `{"detail": "Could not store the image."}` (the storage provider rejected the write; nothing is saved)
 - `PUT /api/v1/admin/artworks/{id}/images/order` body `{"image_ids": ["uuid", ...]}` -> `200`
   `list[ArtworkImageOut]`. The list must contain every image of the artwork exactly once, else
   `422`. `sort_order` becomes the list position.
 - `POST /api/v1/admin/artworks/{id}/images/{image_id}/primary` -> `200` `list[ArtworkImageOut]`;
   `404` `{"detail": "Image not found"}`.
-- `DELETE /api/v1/admin/artworks/{id}/images/{image_id}` -> `204`. Removes both R2 objects, but
-  only ones under this environment's own prefix and `R2_PUBLIC_BASE_URL`; external URLs are left
-  alone. If the deleted image was primary, the next image becomes primary.
+- `DELETE /api/v1/admin/artworks/{id}/images/{image_id}` -> `204`. Removes both stored objects from
+  the provider that holds them (recorded per image, so images uploaded before a provider switch
+  still delete correctly), but only ones under this environment's own prefix whose URL is that
+  provider's public URL; external URLs are left alone. If the deleted image was primary, the next image becomes primary.
   - `409` `{"detail": "Artwork needs at least one image while it is published, reserved or sold."}`
     (PRD rule 10)
-  - `404` `{"detail": "Image not found"}`; `502` if R2 fails (the image is kept; retry is safe).
+  - `404` `{"detail": "Image not found"}`; `502` if the provider fails (the image is kept; retry is safe).
 
 ---
 

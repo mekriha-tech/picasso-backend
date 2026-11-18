@@ -35,10 +35,25 @@ Safety: the script fails closed. Set `ENVIRONMENT=production` on the production 
 default is `development`, so an unset value is not detected as production) and never run the script
 with production's `DATABASE_URL`.
 
-## Image storage (Cloudflare R2)
+## Image storage (Cloudinary, R2 or S3)
 
-Artwork images are stored in Cloudflare R2 and served from its public URL. Set these on each
-service (all optional; image upload endpoints return 503 until all five are set):
+Providers, the per-image `storage_provider` column and the procedure for moving images from one
+provider to another (`scripts/migrate_images.py`, guarded by `ALLOW_MIGRATE=1`) are in
+[STORAGE.md](STORAGE.md). Run `alembic upgrade head` first (adds `artwork_images.storage_provider`
+and marks existing R2 images `r2`).
+
+Pick the provider for new uploads with `STORAGE_BACKEND=cloudinary|r2|s3` (unset = whichever is
+configured; set it explicitly when more than one is). All storage variables are optional and the
+app boots without them; uploads return 503 until the chosen provider is fully configured.
+
+For Cloudinary set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`. Generic S3
+uses `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_BASE_URL` and optionally
+`S3_ENDPOINT_URL`, `S3_REGION`. The frontend must allow the image host of whichever provider is
+used (for Cloudinary: `res.cloudinary.com`).
+
+### Cloudflare R2 variables
+
+Set these for R2 (all five are required):
 
 | Variable | Purpose |
 | --- | --- |
@@ -47,13 +62,13 @@ service (all optional; image upload endpoints return 503 until all five are set)
 | `R2_BUCKET` | Bucket name. |
 | `R2_PUBLIC_BASE_URL` | Public base URL of the bucket (r2.dev or custom domain), no trailing slash needed. |
 
-**Production and staging currently share one bucket.** To keep them apart, every object key is
+**Production and staging may share one bucket or Cloudinary account.** To keep them apart, every object key is
 prefixed with the service's `ENVIRONMENT` value, lowercased:
 `production/artworks/<random>.webp` and `staging/artworks/<random>.webp` (full size and preview
 each get their own random key). Set `ENVIRONMENT` correctly on each service; splitting the
 environments into separate buckets later is a matter of moving one prefix.
 
 Deleting an image only removes objects whose key is under this environment's own prefix and whose
-stored URL is exactly that key under `R2_PUBLIC_BASE_URL`. External URLs (e.g. the Wikimedia seed
+stored URL is exactly that key under the provider's public base URL. External URLs (e.g. the Wikimedia seed
 images) and the other environment's objects are never touched, and a missing object is not an
 error.
