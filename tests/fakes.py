@@ -5,7 +5,12 @@ from app.services.storage import StorageError
 class InMemoryStorage:
     configured = True
 
-    def __init__(self, key_prefix="staging", base="https://cdn.example.test", fail_put_after=None):
+    def __init__(
+        self, key_prefix="staging", base="https://cdn.example.test", fail_put_after=None,
+        provider="r2",
+    ):
+        self.provider = provider
+        self.identity = f"store:{base}"
         self.key_prefix = key_prefix
         self.base = base
         self.objects: dict[str, tuple[bytes, str]] = {}

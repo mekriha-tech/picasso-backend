@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import computed_field
 
@@ -27,8 +29,35 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
 
-    # Cloudflare R2 artwork image storage. All optional: the app boots without them and the
-    # image upload endpoints answer 503 until all five are set.
+    # Artwork image storage. Everything here is optional: the app boots with none of it set and
+    # the image upload endpoints answer 503. STORAGE_BACKEND picks the provider for NEW uploads;
+    # unset means "whichever provider is fully configured". A typo fails at startup on purpose.
+    STORAGE_BACKEND: Literal["cloudinary", "r2", "s3"] | None = None
+
+    CLOUDINARY_CLOUD_NAME: str | None = None
+    CLOUDINARY_API_KEY: str | None = None
+    CLOUDINARY_API_SECRET: str | None = None
+
+    # Generic S3-compatible store. Endpoint and region are optional overrides (AWS needs neither
+    # endpoint nor, usually, more than a region; MinIO and others need the endpoint).
+    S3_BUCKET: str | None = None
+    S3_ACCESS_KEY_ID: str | None = None
+    S3_SECRET_ACCESS_KEY: str | None = None
+    S3_PUBLIC_BASE_URL: str | None = None
+    S3_ENDPOINT_URL: str | None = None
+    S3_REGION: str | None = None
+
+    @property
+    def cloudinary_configured(self) -> bool:
+        return all((self.CLOUDINARY_CLOUD_NAME, self.CLOUDINARY_API_KEY, self.CLOUDINARY_API_SECRET))
+
+    @property
+    def s3_configured(self) -> bool:
+        return all(
+            (self.S3_BUCKET, self.S3_ACCESS_KEY_ID, self.S3_SECRET_ACCESS_KEY, self.S3_PUBLIC_BASE_URL)
+        )
+
+    # Cloudflare R2 (all five required).
     R2_ACCOUNT_ID: str | None = None
     R2_ACCESS_KEY_ID: str | None = None
     R2_SECRET_ACCESS_KEY: str | None = None

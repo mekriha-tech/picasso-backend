@@ -20,7 +20,10 @@ class ArtworkImage(Base):
     url: Mapped[str] = mapped_column(Text, nullable=False)
     # Smaller derivative (~800px). NULL for rows that predate R2 storage (seeded external URLs).
     preview_url: Mapped[str | None] = mapped_column(Text)
-    # Object keys in the bucket, kept so delete never has to parse them back out of a URL.
+    # Which provider holds the objects ("r2", "cloudinary", "s3"). NULL = not in our storage
+    # (external URL, e.g. seeded images), so it is never deleted or migrated.
+    storage_provider: Mapped[str | None] = mapped_column(Text)
+    # Object keys in the store, kept so delete never has to parse them back out of a URL.
     # NULL when the image is not stored in our bucket.
     storage_key: Mapped[str | None] = mapped_column(Text)
     preview_storage_key: Mapped[str | None] = mapped_column(Text)

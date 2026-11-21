@@ -19,7 +19,13 @@ from app.models.artwork import Artwork
 from app.models.artwork_image import ArtworkImage
 from app.services import image_processing
 from app.services.artworks import PUBLIC_ARTWORK_STATUSES
-from app.services.storage import ImageStorage, StorageNotConfiguredError, storage_delete, storage_put
+from app.services.storage import (
+    ImageStorage,
+    StorageNotConfiguredError,
+    storage_delete,
+    storage_for_provider,
+    storage_put,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +125,7 @@ async def add_image(
             artwork_id=artwork.id,
             url=full_url,
             preview_url=preview_url,
+            storage_provider=storage.provider,
             storage_key=full_key,
             preview_storage_key=preview_key,
             alt_text=alt,
@@ -144,7 +151,11 @@ async def add_image(
 
 
 async def delete_image(
-    db: AsyncSession, storage: ImageStorage, artwork_id: uuid.UUID, image_id: uuid.UUID
+    db: AsyncSession,
+    storage: ImageStorage,
+    artwork_id: uuid.UUID,
+    image_id: uuid.UUID,
+    resolve_storage=storage_for_provider,
 ) -> None:
     artwork = await _lock_artwork(db, artwork_id)
     images = await list_images(db, artwork.id)
@@ -162,14 +173,19 @@ async def delete_image(
     # Storage first: object deletes are idempotent, so if one fails the row is still there and
     # the admin can simply retry. (Row first would orphan objects with no way to find them.)
     try:
-        for key, url in (
-            (target.storage_key, target.url),
-            (target.preview_storage_key, target.preview_url),
-        ):
-            # Only objects in our bucket under this environment's prefix. External URLs
-            # (seed images) and other environments' objects are left alone.
-            if key and storage.owns(key, url):
-                await storage_delete(storage, key)
+        # Delete with the provider that holds the row's objects, which may not be the one new
+        # uploads currently go to (STORAGE_BACKEND can change). NULL provider = external URL.
+        holder = target.storage_provider
+        if holder:
+            owner = storage if storage.provider == holder else resolve_storage(holder)
+            for key, url in (
+                (target.storage_key, target.url),
+                (target.preview_storage_key, target.preview_url),
+            ):
+                # Only objects in our store under this environment's prefix whose URL is exactly
+                # that key's public URL; anything else is left alone.
+                if key and owner.owns(key, url):
+                    await storage_delete(owner, key)
     except Exception:
         await db.rollback()
         raise

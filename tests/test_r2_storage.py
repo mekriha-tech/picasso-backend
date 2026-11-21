@@ -78,10 +78,13 @@ def test_environment_prefix():
 
 
 def test_unset_r2_settings_give_unconfigured_storage(monkeypatch):
+    monkeypatch.setattr(settings, "STORAGE_BACKEND", None)
+    for name in ("CLOUDINARY_API_KEY", "S3_BUCKET"):
+        monkeypatch.setattr(settings, name, None)
     for name in ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "R2_PUBLIC_BASE_URL"):
         monkeypatch.setattr(settings, name, None)
-    storage_mod._build_default.cache_clear()
+    storage_mod.storage_for_provider.cache_clear()
     try:
         assert isinstance(storage_mod.get_image_storage(), UnconfiguredStorage)
     finally:
-        storage_mod._build_default.cache_clear()
+        storage_mod.storage_for_provider.cache_clear()
