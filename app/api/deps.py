@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
@@ -32,10 +34,15 @@ async def get_current_user(
     user_id = decode_access_token(credentials.credentials)
     if user_id is None:
         raise unauthorized
+    try:
+        user_uuid = uuid.UUID(str(user_id))
+    except ValueError:
+        raise unauthorized
 
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalars().first()
-    if user is None:
+    # Deactivated accounts get the same 401 as an unknown user: don't reveal the state.
+    if user is None or not user.is_active:
         raise unauthorized
 
     return user

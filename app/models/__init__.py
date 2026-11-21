@@ -6,3 +6,4 @@ from app.models.artist_profile import ArtistProfile
 from app.models.artwork import Artwork
 from app.models.artwork_image import ArtworkImage
 from app.models.testimonial import Testimonial
+from app.models.admin_audit_log import AdminAuditLog

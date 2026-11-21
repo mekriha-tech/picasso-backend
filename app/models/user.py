@@ -33,6 +33,9 @@ class User(Base):
     phone: Mapped[str | None] = mapped_column(Text)
     
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+    # False = deactivated by an admin: cannot log in, refresh or use an existing access token.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
     
     # Updated: Added index=True per PRD 3.2 requirements
     artist_status: Mapped[ArtistStatus] = mapped_column(

@@ -17,7 +17,7 @@ async def get_session_admin_user(request: Request, db: AsyncSession = Depends(ge
         raise AdminAuthRequired()
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalars().first()
-    if user is None or not user.is_admin:
+    if user is None or not user.is_admin or not user.is_active:
         request.session.clear()
         raise AdminAuthRequired()
     return user
@@ -26,7 +26,7 @@ async def get_session_admin_user(request: Request, db: AsyncSession = Depends(ge
 async def authenticate_admin(db: AsyncSession, email: str, password: str) -> User | None:
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalars().first()
-    if user is None or not user.password_hash or not user.is_admin:
+    if user is None or not user.password_hash or not user.is_admin or not user.is_active:
         return None
     if not verify_password(password, user.password_hash):
         return None

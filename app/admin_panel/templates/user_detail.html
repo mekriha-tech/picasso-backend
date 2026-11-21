@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}User — {{ user.email }}{% endblock %}
+{% block body %}
+  <nav>
+    <a href="/admin/applications">Applications</a><a href="/admin/artworks">Artworks</a><a href="/admin/users">Users</a>
+    <form class="inline" method="post" action="/admin/logout">{{ csrf_field(request) }}<button type="submit">Log out</button></form>
+  </nav>
+  <p><a href="/admin/users">&larr; Back to users</a></p>
+  {% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <h1>{{ user.full_name }}</h1>
+  <p><strong>Email:</strong> {{ user.email }}</p>
+  <p><strong>Location:</strong> {{ user.location or "—" }}</p>
+  <p><strong>Phone:</strong> {{ user.phone or "—" }}</p>
+  <p><strong>Role:</strong> {% if user.is_admin %}<span class="badge">admin</span>{% else %}user{% endif %}</p>
+  <p><strong>Account:</strong> {% if user.is_active %}active{% else %}<span class="badge danger">deactivated</span>{% endif %}</p>
+  <p><strong>Email verified:</strong> {{ user.email_verified_at or "no" }}</p>
+  <p><strong>Created:</strong> {{ user.created_at }}</p>
+  <p><strong>Last login:</strong> {{ user.last_login_at or "never" }}</p>
+  <p><strong>Active sessions:</strong> {{ detail.active_sessions }}</p>
+  <p><strong>Artist status:</strong> <span class="badge">{{ user.artist_status.value }}</span>
+    {% if detail.application %}
+      &mdash; <a href="/admin/applications/{{ detail.application.id }}">latest application ({{ detail.application.status.value }})</a>
+    {% endif %}
+  </p>
+  {% if detail.artist_profile %}
+    <p><strong>Artist profile:</strong> {{ detail.artist_profile.display_name }}</p>
+    <p><strong>Artworks:</strong> {{ detail.artwork_count }}</p>
+  {% endif %}
+
+  <h2>Actions</h2>
+  {% if is_self %}
+    <p>This is your own account; you can't deactivate or demote yourself.</p>
+  {% else %}
+    <p>
+      {% if user.is_active %}
+        <a href="/admin/users/{{ user.id }}/confirm/deactivate">Deactivate</a>
+      {% else %}
+        <a href="/admin/users/{{ user.id }}/confirm/reactivate">Reactivate</a>
+      {% endif %}
+      &middot;
+      {% if user.is_admin %}
+        <a href="/admin/users/{{ user.id }}/confirm/demote_admin">Remove admin</a>
+      {% else %}
+        <a href="/admin/users/{{ user.id }}/confirm/promote_admin">Make admin</a>
+      {% endif %}
+    </p>
+  {% endif %}
+
+  <h2>Recent admin actions</h2>
+  <table>
+    <tr><th>When</th><th>Action</th><th>By</th></tr>
+    {% for entry in detail.audit %}
+      <tr><td>{{ entry.created_at }}</td><td>{{ entry.action }}</td><td>{{ entry.actor_email }}</td></tr>
+    {% else %}
+      <tr><td colspan="3">None.</td></tr>
+    {% endfor %}
+  </table>
+{% endblock %}
