@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Confirm{% endblock %}
+{% block body %}
+  <nav>
+    <a href="/admin/applications">Applications</a><a href="/admin/artworks">Artworks</a><a href="/admin/users">Users</a>
+    <form class="inline" method="post" action="/admin/logout">{{ csrf_field(request) }}<button type="submit">Log out</button></form>
+  </nav>
+  <h1>Confirm: {{ label }}</h1>
+  <p>{{ label }} <strong>{{ user.full_name }}</strong> ({{ user.email }})?</p>
+  <p>{{ consequence }}</p>
+  <form method="post" action="/admin/users/{{ user.id }}/{{ action }}">
+    {{ csrf_field(request) }}
+    <button type="submit" class="danger">Yes, {{ label | lower }}</button>
+    <a href="/admin/users/{{ user.id }}">Cancel</a>
+  </form>
+{% endblock %}

@@ -122,6 +122,10 @@ async def login(
         raise invalid_credentials
     if not verify_password(credentials.password, user.password_hash):
         raise invalid_credentials
+    # Checked after the password so a deactivated account is indistinguishable from a wrong
+    # password (same error, same hashing work).
+    if not user.is_active:
+        raise invalid_credentials
 
     access_token = create_access_token(subject=str(user.id))
     raw_refresh_token, db_refresh_token = _new_refresh_token_row(user.id, request)
@@ -173,6 +177,13 @@ async def refresh_token(
     db_token = result.scalars().first()
 
     if not db_token:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # A deactivated (or deleted) user can't refresh; same generic error as an unknown token.
+    token_owner = (
+        await db.execute(select(User).where(User.id == db_token.user_id))
+    ).scalars().first()
+    if token_owner is None or not token_owner.is_active:
         raise HTTPException(status_code=401, detail="Invalid token")
 
     # 2. Reuse Detection (The Replay Trap)

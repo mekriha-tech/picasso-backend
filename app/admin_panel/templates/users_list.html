@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block body %}
+  <nav>
+    <a href="/admin/applications">Applications</a><a href="/admin/artworks">Artworks</a><a href="/admin/users">Users</a>
+    <form class="inline" method="post" action="/admin/logout">{{ csrf_field(request) }}<button type="submit">Log out</button></form>
+  </nav>
+  <h1>Users</h1>
+  {% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="get">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search email or name">
+    <select name="role">
+      {% for value, label in roles %}
+        <option value="{{ value }}" {% if role == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Search</button>
+  </form>
+  <p>{{ total }} user{{ "" if total == 1 else "s" }}</p>
+  <table>
+    <tr><th>Email</th><th>Name</th><th>Role</th><th>Artist status</th><th>Account</th><th>Email verified</th><th>Created</th><th>Last login</th></tr>
+    {% for u in users %}
+      <tr>
+        <td><a href="/admin/users/{{ u.id }}">{{ u.email }}</a></td>
+        <td>{{ u.full_name }}</td>
+        <td>{% if u.is_admin %}<span class="badge">admin</span>{% else %}user{% endif %}</td>
+        <td><span class="badge">{{ u.artist_status.value }}</span></td>
+        <td>{% if u.is_active %}active{% else %}<span class="badge danger">deactivated</span>{% endif %}</td>
+        <td>{{ "yes" if u.email_verified_at else "no" }}</td>
+        <td>{{ u.created_at }}</td>
+        <td>{{ u.last_login_at or "never" }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8">No users match.</td></tr>
+    {% endfor %}
+  </table>
+  <p>
+    {% if page > 1 %}<a href="{{ page_url(page - 1) }}">&larr; Previous</a>{% endif %}
+    Page {{ page }} of {{ pages }}
+    {% if page < pages %}<a href="{{ page_url(page + 1) }}">Next &rarr;</a>{% endif %}
+  </p>
+{% endblock %}

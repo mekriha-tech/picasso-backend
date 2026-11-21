@@ -124,8 +124,9 @@ frontend error-handling layer gets too invested in one shape or the other.
 - `200` → same shape as `/register`'s `201` (user + `access_token` + `token_type`), sets the
   `refresh_token` cookie.
 - `401` → `{"detail": "Invalid email or password"}` — deliberately identical whether the email is
-  unknown, the password is wrong, or the account has no password at all (OAuth-only). None of
-  those cases are distinguishable from the response, on purpose.
+  unknown, the password is wrong, the account has no password at all (OAuth-only), or the account
+  has been deactivated by an admin. None of those cases are distinguishable from the response, on
+  purpose.
 
 ### `GET /api/v1/auth/me`
 
@@ -148,7 +149,9 @@ No body. Reads the `refresh_token` cookie.
 - `200` → `{ "access_token": "eyJ..." }`, rotates the cookie
 - `401` → `{"detail": "No refresh token"}` / `{"detail": "Invalid token"}` /
   `{"detail": "Token expired"}` / `{"detail": "session_revoked"}` (reuse detected — force
-  re-login)
+  re-login). A deactivated account gets `{"detail": "Invalid token"}` (its refresh tokens are also
+  revoked at deactivation time), and its existing access token gets the usual `401
+  {"detail": "Not authenticated"}` on every authenticated route.
 
 ### `POST /api/v1/auth/logout`
 
@@ -432,6 +435,15 @@ from the JSON API above:
     Deleting the last image of a published/reserved/sold artwork is refused.
   - `GET/POST /admin/artworks/{id}/delete` - confirmation page, then soft delete (`deleted_at` set,
     status `removed`; images stay in storage). Sold and reserved artworks are refused.
+  - `GET /admin/users?q=&role=&page=` - paginated (25/page) user list; `q` searches email and
+    name, `role` is `all` | `admins` | `artists` (approved artists).
+  - `GET /admin/users/{id}` - profile fields, artist status + latest application link, artwork
+    count, active session count, recent admin actions. Never shows the password hash or tokens.
+  - `GET /admin/users/{id}/confirm/{action}` then `POST /admin/users/{id}/{action}` with
+    `action` = `deactivate` | `reactivate` | `promote_admin` | `demote_admin`. Deactivating blocks
+    login/refresh/access tokens and revokes all refresh tokens. Guard rails: you can't deactivate
+    or demote yourself, and the last active admin can't be demoted or deactivated (an error is
+    shown on the detail page). Every change is recorded in `admin_audit_log`.
   - **CSRF:** every POST form in the panel (except login) carries a `csrf_token` hidden field tied
     to the session cookie; a missing or wrong token gets `403`.
 

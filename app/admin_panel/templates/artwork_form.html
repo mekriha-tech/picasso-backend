@@ -2,7 +2,7 @@
 {% block title %}{% if artwork %}Edit artwork{% else %}New artwork{% endif %}{% endblock %}
 {% block body %}
   <nav>
-    <a href="/admin/applications">Applications</a><a href="/admin/artworks">Artworks</a>
+    <a href="/admin/applications">Applications</a><a href="/admin/artworks">Artworks</a><a href="/admin/users">Users</a>
     <form class="inline" method="post" action="/admin/logout">{{ csrf_field(request) }}<button type="submit">Log out</button></form>
   </nav>
   <h1>{% if artwork %}Edit: {{ artwork.title }}{% else %}New artwork{% endif %}</h1>
