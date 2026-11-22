@@ -2,6 +2,7 @@
 assignments. Used by the HTML admin panel; the public API only reads published rows."""
 import uuid
 from datetime import date
+from urllib.parse import urlsplit
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
@@ -63,7 +64,9 @@ def clean_exhibition_form(raw: dict, existing: Exhibition | None = None) -> dict
         errors["viewer_kind"] = "Choose how visitors will view this gallery."
 
     url = _text(raw, "vr_tour_url")
-    if url is not None and not url.lower().startswith(("https://", "http://")):
+    if url is not None and (
+        not url.lower().startswith(("https://", "http://")) or not urlsplit(url).netloc
+    ):
         errors["vr_tour_url"] = VR_URL_MESSAGE
     elif url is None and kind == ViewerKind.vendor_embed.value:
         errors["vr_tour_url"] = VR_URL_MESSAGE
@@ -72,7 +75,7 @@ def clean_exhibition_form(raw: dict, existing: Exhibition | None = None) -> dict
     sort_raw = _text(raw, "sort_order")
     sort_order = 0
     if sort_raw is not None:
-        if not sort_raw.isdigit() or int(sort_raw) > MAX_SORT_ORDER:
+        if not sort_raw.isdecimal() or int(sort_raw) > MAX_SORT_ORDER:
             errors["sort_order"] = f"Sort order must be a whole number from 0 to {MAX_SORT_ORDER}."
         else:
             sort_order = int(sort_raw)
@@ -105,7 +108,8 @@ async def _artwork_count(db: AsyncSession, exhibition_id: uuid.UUID) -> int:
         await db.execute(
             select(func.count())
             .select_from(ExhibitionArtwork)
-            .where(ExhibitionArtwork.exhibition_id == exhibition_id)
+            .join(Artwork, Artwork.id == ExhibitionArtwork.artwork_id)
+            .where(ExhibitionArtwork.exhibition_id == exhibition_id, Artwork.deleted_at.is_(None))
         )
     ).scalar_one()
 
@@ -211,3 +215,34 @@ async def delete_exhibition(db: AsyncSession, exhibition_id: uuid.UUID) -> None:
     )
     await db.delete(exhibition)
     await db.commit()
+
+
+async def get_exhibition(db: AsyncSession, exhibition_id: uuid.UUID) -> Exhibition | None:
+    return await db.get(Exhibition, exhibition_id)
+
+
+async def list_exhibitions(db: AsyncSession) -> list[tuple[Exhibition, int]]:
+    """Every gallery (published or not) with its count of live assigned artworks."""
+    counts = (
+        select(ExhibitionArtwork.exhibition_id, func.count().label("n"))
+        .join(Artwork, Artwork.id == ExhibitionArtwork.artwork_id)
+        .where(Artwork.deleted_at.is_(None))
+        .group_by(ExhibitionArtwork.exhibition_id)
+        .subquery()
+    )
+    rows = await db.execute(
+        select(Exhibition, func.coalesce(counts.c.n, 0))
+        .outerjoin(counts, counts.c.exhibition_id == Exhibition.id)
+        .order_by(Exhibition.sort_order, Exhibition.created_at.desc())
+    )
+    return [(ex, int(n)) for ex, n in rows.all()]
+
+
+async def list_assignments(db: AsyncSession, exhibition_id: uuid.UUID) -> dict[uuid.UUID, int | None]:
+    """artwork_id -> wall_position for the gallery's current assignment."""
+    rows = await db.execute(
+        select(ExhibitionArtwork.artwork_id, ExhibitionArtwork.wall_position).where(
+            ExhibitionArtwork.exhibition_id == exhibition_id
+        )
+    )
+    return {art_id: pos for art_id, pos in rows.all()}

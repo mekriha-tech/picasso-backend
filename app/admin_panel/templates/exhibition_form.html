@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{% if exhibition %}Edit gallery{% else %}New gallery{% endif %}{% endblock %}
+{% block body %}
+  <nav>
+    <a href="/admin/applications">Applications</a><a href="/admin/artworks">Artworks</a><a href="/admin/exhibitions">Galleries</a><a href="/admin/users">Users</a>
+    <form class="inline" method="post" action="/admin/logout">{{ csrf_field(request) }}<button type="submit">Log out</button></form>
+  </nav>
+  <h1>{% if exhibition %}Edit: {{ exhibition.title }}{% else %}New gallery{% endif %}</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
+  {% if errors %}<p class="error">Please fix the highlighted fields.</p>{% endif %}
+
+  <form class="form-grid" method="post"
+        action="{% if exhibition %}/admin/exhibitions/{{ exhibition.id }}/edit{% else %}/admin/exhibitions/new{% endif %}">
+    {{ csrf_field(request) }}
+    <label>Title
+      <input type="text" name="title" value="{{ values.title }}" maxlength="200" required>
+      {% if errors.title %}<span class="field-error">{{ errors.title }}</span>{% endif %}
+    </label>
+    <label>How will visitors view it?
+      <select name="viewer_kind" required>
+        <option value="">Choose a viewer</option>
+        {% for kind, label in viewer_kinds %}
+          <option value="{{ kind }}" {% if values.viewer_kind == kind %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      {% if errors.viewer_kind %}<span class="field-error">{{ errors.viewer_kind }}</span>{% endif %}
+    </label>
+    <label>Tour web address (required for an external viewer; ignored for our own viewer)
+      <input type="text" name="vr_tour_url" value="{{ values.vr_tour_url }}" placeholder="https://">
+      {% if errors.vr_tour_url %}<span class="field-error">{{ errors.vr_tour_url }}</span>{% endif %}
+    </label>
+    <label>Description
+      <textarea name="description" rows="5">{{ values.description }}</textarea>
+      {% if errors.description %}<span class="field-error">{{ errors.description }}</span>{% endif %}
+    </label>
+    <label>Cover image web address
+      <input type="text" name="cover_image_url" value="{{ values.cover_image_url }}">
+      {% if errors.cover_image_url %}<span class="field-error">{{ errors.cover_image_url }}</span>{% endif %}
+    </label>
+    <label>Starts on (YYYY-MM-DD)
+      <input type="text" name="starts_on" value="{{ values.starts_on }}" placeholder="2026-01-31">
+      {% if errors.starts_on %}<span class="field-error">{{ errors.starts_on }}</span>{% endif %}
+    </label>
+    <label>Ends on (YYYY-MM-DD)
+      <input type="text" name="ends_on" value="{{ values.ends_on }}" placeholder="2026-03-31">
+      {% if errors.ends_on %}<span class="field-error">{{ errors.ends_on }}</span>{% endif %}
+    </label>
+    <label>Sort order (lower shows first)
+      <input type="text" inputmode="numeric" name="sort_order" value="{{ values.sort_order }}" placeholder="0">
+      {% if errors.sort_order %}<span class="field-error">{{ errors.sort_order }}</span>{% endif %}
+    </label>
+    <button type="submit">{% if exhibition %}Save changes{% else %}Create draft{% endif %}</button>
+  </form>
+
+  {% if exhibition %}
+    <h2>Status</h2>
+    <p>Current status: <span class="badge">{% if exhibition.is_published %}published{% else %}draft{% endif %}</span>
+      (a gallery with our own viewer needs at least one artwork before it can be published)</p>
+    <form class="inline" method="post"
+          action="/admin/exhibitions/{{ exhibition.id }}/{% if exhibition.is_published %}unpublish{% else %}publish{% endif %}?next=edit">
+      {{ csrf_field(request) }}
+      <button type="submit">{% if exhibition.is_published %}Unpublish{% else %}Publish{% endif %}</button>
+    </form>
+
+    {% if exhibition.viewer_kind == "first_party" %}
+      <h2>Artworks on the walls</h2>
+      {% if artwork_choices %}
+        <form method="post" action="/admin/exhibitions/{{ exhibition.id }}/artworks">
+          {{ csrf_field(request) }}
+          <table>
+            <tr><th>Include</th><th>Artwork</th><th>Artist</th><th>Wall position (optional, each must differ)</th></tr>
+            {% for artwork, artist_name in artwork_choices %}
+              <tr>
+                <td><input type="checkbox" name="artwork" value="{{ artwork.id }}" {% if artwork.id in assigned %}checked{% endif %}></td>
+                <td>{{ artwork.title }}</td>
+                <td>{{ artist_name }}</td>
+                <td><input type="text" inputmode="numeric" name="position_{{ artwork.id }}"
+                           value="{% if assigned[artwork.id] is not none %}{{ assigned[artwork.id] }}{% endif %}"></td>
+              </tr>
+            {% endfor %}
+          </table>
+          <button type="submit">Save artworks</button>
+        </form>
+      {% else %}
+        <p>There are no artworks to choose from yet.</p>
+      {% endif %}
+    {% else %}
+      <p><small>This gallery uses an external viewer, so no artworks are assigned here.</small></p>
+    {% endif %}
+
+    <h2>Delete</h2>
+    <p><a class="danger" href="/admin/exhibitions/{{ exhibition.id }}/delete">Delete this gallery&hellip;</a></p>
+  {% else %}
+    <p><small>Save the draft first; artworks are chosen on the next screen.</small></p>
+  {% endif %}
+{% endblock %}

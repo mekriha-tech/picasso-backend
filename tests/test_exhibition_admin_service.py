@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import uuid
 
 import pytest
@@ -194,3 +195,33 @@ def test_delete_removes_assignments(harness):
             return (await s.execute(select(Artwork).where(Artwork.id == art))).scalar_one_or_none()
 
     assert harness.run(fetch()) is not None
+
+
+@pytest.mark.parametrize("url", ["https://", "http://", "https:///path", "HTTPS://  "])
+def test_vendor_url_needs_a_host(url):
+    with pytest.raises(ExhibitionValidationError) as e:
+        svc.clean_exhibition_form(_form(vr_tour_url=url))
+    assert e.value.errors["vr_tour_url"] == "Enter a full web address starting with https://."
+
+
+def test_sort_order_unicode_digit_is_a_form_error_not_a_crash():
+    with pytest.raises(ExhibitionValidationError) as e:
+        svc.clean_exhibition_form(_form(sort_order="\u00b2"))
+    assert "sort_order" in e.value.errors
+
+
+def test_publish_ignores_soft_deleted_artworks(harness):
+    ex = _create(harness, viewer_kind="first_party", vr_tour_url="")
+    art = harness.make_artwork(harness.make_artist())
+    _call(harness, svc.set_artworks, ex.id, {art: None})
+
+    async def soft_delete():
+        async with harness.session() as s:
+            row = await s.get(Artwork, art)
+            row.deleted_at = datetime.now(timezone.utc)
+            await s.commit()
+
+    harness.run(soft_delete())
+    with pytest.raises(ExhibitionValidationError) as e:
+        _call(harness, svc.set_published, ex.id, True)
+    assert PUBLISH_NEEDS_ARTWORKS in e.value.errors.values()

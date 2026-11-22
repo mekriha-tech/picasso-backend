@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Galleries{% endblock %}
+{% block body %}
+  <nav>
+    <a href="/admin/applications">Applications</a><a href="/admin/artworks">Artworks</a><a href="/admin/exhibitions">Galleries</a><a href="/admin/users">Users</a>
+    <form class="inline" method="post" action="/admin/logout">{{ csrf_field(request) }}<button type="submit">Log out</button></form>
+  </nav>
+  <h1>Galleries <a href="/admin/exhibitions/new" style="font-size:0.5em">+ New gallery</a></h1>
+  {% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <table>
+    <tr><th>Title</th><th>Viewer</th><th>Artworks</th><th>Status</th><th>Actions</th></tr>
+    {% for exhibition, artwork_count in exhibitions %}
+      <tr>
+        <td><a href="/admin/exhibitions/{{ exhibition.id }}/edit">{{ exhibition.title }}</a></td>
+        <td>{{ exhibition.viewer_kind }}</td>
+        <td>{{ artwork_count }}</td>
+        <td><span class="badge">{% if exhibition.is_published %}published{% else %}draft{% endif %}</span></td>
+        <td>
+          <form class="inline" method="post"
+                action="/admin/exhibitions/{{ exhibition.id }}/{% if exhibition.is_published %}unpublish{% else %}publish{% endif %}">
+            {{ csrf_field(request) }}
+            <button type="submit">{% if exhibition.is_published %}Unpublish{% else %}Publish{% endif %}</button>
+          </form>
+          <a class="danger" href="/admin/exhibitions/{{ exhibition.id }}/delete">Delete&hellip;</a>
+        </td>
+      </tr>
+    {% endfor %}
+  </table>
+{% endblock %}
