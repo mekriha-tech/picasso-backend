@@ -2,7 +2,7 @@
 
 Repo: mekriha-tech/picasso-frontend
 Labels: `needs-frontend`, `contract-change`
-Not yet filed: the product owner must approve before `gh issue create` is run.
+Filed as https://github.com/mekriha-tech/picasso-frontend/issues/23
 
 ## Summary
 
