@@ -45,6 +45,15 @@ def _iso_date(raw: dict, name: str, errors: dict) -> date | None:
         return None
 
 
+def _has_web_host(url: str) -> bool:
+    if not url.lower().startswith(("https://", "http://")):
+        return False
+    try:
+        return bool(urlsplit(url).hostname)
+    except ValueError:  # e.g. "https://[" (invalid IPv6 literal)
+        return False
+
+
 def clean_exhibition_form(raw: dict, existing: Exhibition | None = None) -> dict:
     """Validates admin form input and returns clean column values, or raises
     ExhibitionValidationError. viewer_kind must be chosen explicitly. `existing` is accepted for
@@ -64,9 +73,7 @@ def clean_exhibition_form(raw: dict, existing: Exhibition | None = None) -> dict
         errors["viewer_kind"] = "Choose how visitors will view this gallery."
 
     url = _text(raw, "vr_tour_url")
-    if url is not None and (
-        not url.lower().startswith(("https://", "http://")) or not urlsplit(url).netloc
-    ):
+    if url is not None and not _has_web_host(url):
         errors["vr_tour_url"] = VR_URL_MESSAGE
     elif url is None and kind == ViewerKind.vendor_embed.value:
         errors["vr_tour_url"] = VR_URL_MESSAGE
@@ -75,7 +82,7 @@ def clean_exhibition_form(raw: dict, existing: Exhibition | None = None) -> dict
     sort_raw = _text(raw, "sort_order")
     sort_order = 0
     if sort_raw is not None:
-        if not sort_raw.isdecimal() or int(sort_raw) > MAX_SORT_ORDER:
+        if not sort_raw.isdecimal() or len(sort_raw) > 10 or int(sort_raw) > MAX_SORT_ORDER:
             errors["sort_order"] = f"Sort order must be a whole number from 0 to {MAX_SORT_ORDER}."
         else:
             sort_order = int(sort_raw)

@@ -225,3 +225,16 @@ def test_publish_ignores_soft_deleted_artworks(harness):
     with pytest.raises(ExhibitionValidationError) as e:
         _call(harness, svc.set_published, ex.id, True)
     assert PUBLISH_NEEDS_ARTWORKS in e.value.errors.values()
+
+
+@pytest.mark.parametrize("url", ["https://[", "http://[::1", "https://@", "https://:80"])
+def test_vendor_url_malformed_authority_is_a_form_error(url):
+    with pytest.raises(ExhibitionValidationError) as e:
+        svc.clean_exhibition_form(_form(vr_tour_url=url))
+    assert e.value.errors["vr_tour_url"] == "Enter a full web address starting with https://."
+
+
+def test_sort_order_huge_digit_string_is_a_form_error():
+    with pytest.raises(ExhibitionValidationError) as e:
+        svc.clean_exhibition_form(_form(sort_order="9" * 5000))
+    assert "sort_order" in e.value.errors

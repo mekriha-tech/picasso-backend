@@ -186,7 +186,7 @@ async def exhibition_set_artworks(
         pos_raw = str(form.get(f"position_{art_id}") or "").strip()
         if not pos_raw:
             positions[art_id] = None
-        elif pos_raw.isdecimal() and int(pos_raw) <= svc.MAX_SORT_ORDER:
+        elif pos_raw.isdecimal() and len(pos_raw) <= 10 and int(pos_raw) <= svc.MAX_SORT_ORDER:
             positions[art_id] = int(pos_raw)
         else:
             return _redirect(_edit_url(exhibition_id), error=BAD_POSITION)

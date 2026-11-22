@@ -138,3 +138,14 @@ def test_delete_requires_confirm_page_then_post(panel):
     r = panel.post(f"/admin/exhibitions/{ex_id}/delete")
     assert r.status_code == 303 and r.headers["location"].startswith("/admin/exhibitions")
     assert panel.row(ex_id) is None
+
+
+def test_huge_wall_position_redirects_with_error(panel):
+    ex_id = panel.create()
+    art = panel.h.make_artwork(panel.h.make_artist())
+    r = panel.post(
+        f"/admin/exhibitions/{ex_id}/artworks",
+        {"artwork": [str(art)], f"position_{art}": "9" * 5000},
+    )
+    assert r.status_code == 303 and "error=" in r.headers["location"]
+    assert panel.assigned(ex_id) == {}
