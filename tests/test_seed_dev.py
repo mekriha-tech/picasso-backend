@@ -109,3 +109,29 @@ def test_build_rejects_publishing_without_image():
     spec = dict(data.ARTWORKS[0], images=0)
     with pytest.raises(ValueError, match="at least one image"):
         seed_dev.build_artworks([spec], data.IMAGES)
+
+
+def test_seed_exhibitions_one_of_each_kind():
+    kinds = {e["viewer_kind"]: e for e in data.EXHIBITIONS}
+    assert set(kinds) == {"vendor_embed", "first_party"} and len(data.EXHIBITIONS) == 2
+    assert kinds["vendor_embed"]["vr_tour_url"].startswith("https://example.com/")
+    assert kinds["first_party"]["artwork_titles"]
+    assert len({e["slug"] for e in data.EXHIBITIONS}) == 2
+
+
+def test_seed_first_party_gallery_uses_existing_published_artworks():
+    rows = {r.slug: r for r in seed_dev.build_artworks(data.ARTWORKS, data.IMAGES)}
+    from app.services.slugs import slugify
+
+    gallery = next(e for e in data.EXHIBITIONS if e["viewer_kind"] == "first_party")
+    titles = gallery["artwork_titles"]
+    assert len(titles) == len(set(titles))
+    for title in titles:
+        assert slugify(title) in rows
+        assert rows[slugify(title)].status in ("published", "reserved", "sold")
+
+
+def test_seed_wires_exhibitions_into_seed():
+    import inspect
+
+    assert "data.EXHIBITIONS" in inspect.getsource(seed_dev.seed)

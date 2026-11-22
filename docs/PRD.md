@@ -19,7 +19,7 @@ Picasso is a curated art marketplace with a VR gallery layer. Two things make it
 - Artwork can be assigned to VR exhibitions.
 
 ### Explicit non-goals (v1)
-Multi-currency, shipping/logistics integration, artist payouts and commission accounting, messaging between buyer and artist, mobile apps, first-party VR rendering, proxy/automatic bidding.
+Multi-currency, shipping/logistics integration, artist payouts and commission accounting, messaging between buyer and artist, mobile apps, proxy/automatic bidding.
 
 ### Roles
 | Role | How it's stored | Capabilities |
@@ -318,14 +318,19 @@ CREATE TABLE exhibitions (
   slug            TEXT NOT NULL UNIQUE,
   description     TEXT,
   cover_image_url TEXT,
-  vr_tour_url     TEXT,                    -- Artsteps URL used by the VR block
+  vr_tour_url     TEXT,                    -- Artsteps URL used by the VR block (vendor_embed galleries)
+  viewer_kind     TEXT NOT NULL DEFAULT 'vendor_embed'
+                  CHECK (viewer_kind IN ('vendor_embed', 'first_party')),
+  sort_order      SMALLINT NOT NULL DEFAULT 0,   -- button order on the galleries page
   curator_id      UUID REFERENCES users(id),
   starts_on       DATE,
   ends_on         DATE,
   is_published    BOOLEAN NOT NULL DEFAULT false,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (viewer_kind <> 'vendor_embed' OR vr_tour_url IS NOT NULL)
 );
+-- A first_party exhibition cannot be published with zero artworks (service-layer rule).
 
 CREATE TABLE exhibition_artworks (
   exhibition_id   UUID NOT NULL REFERENCES exhibitions(id) ON DELETE CASCADE,
@@ -444,7 +449,7 @@ Base path `/api/v1`. JSON only. Auth via a stateless JWT access token (15 min, `
 | GET | `/artworks/{slug}` | Full detail incl. images, artist summary, and embedded auction (current bid, bid count, `ends_at`) |
 | GET | `/artworks/featured` | Powers the home page: returns `{sale: [...3], auction: [...3], display: [...3]}` in one call |
 | GET | `/artists` · `/artists/{slug}` | Artist directory and profile with their published works |
-| GET | `/exhibitions` · `/exhibitions/{slug}` | VR gallery listings |
+| GET | `/exhibitions` · `/exhibitions/{slug}` | VR gallery listings. Each gallery has a `viewer_kind` (`vendor_embed` returns `vr_tour_url`; `first_party` returns `artworks[]` ordered by `wall_position`, and the frontend builds buy links from artwork `slug`). Ordered by `sort_order`; subject to the logged-out teaser. Detail in `docs/API_REFERENCE.md` |
 | GET | `/testimonials` | Home page |
 
 ### 4.3 Auctions & bidding
@@ -573,4 +578,4 @@ Formatting stays on the client: INR `en-IN` with a `₹ ` prefix; countdown `Dd 
 3. Auction payment window after winning (48h assumed) and the consequence of non-payment.
 4. Whether display-only works from non-approved users are allowed at all (currently no — `artworks.artist_id` requires an `artist_profiles` row).
 5. Anti-sniping extension: adopt now or later.
-6. VR: stay on Artsteps embeds, or build first-party rooms.
+6. ~~VR: stay on Artsteps embeds, or build first-party rooms.~~ **Resolved: per-gallery kind, `vendor_embed` or `first_party`, mixed freely** (see `docs/superpowers/specs/2026-11-22-vr-galleries-design.md`).

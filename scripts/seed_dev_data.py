@@ -155,3 +155,17 @@ for _i, (_artist, _title, _year, _medium, _cat, _lt, _price, _status, _size, _de
         price=_price, sold_price=_price if _status == "sold" else None, status=_status,
         description=_desc, images=(_i % 3) + 1, **_in(*_size),
     ))
+
+
+# VR galleries. One vendor embed (placeholder URL on a reserved example domain) and one
+# first-party room hung with existing seed artworks (by title; the seed slugifies them).
+EXHIBITIONS = [
+    dict(slug="seed-vendor-gallery", title="Seed Vendor Gallery", viewer_kind="vendor_embed",
+         description="Placeholder vendor-embedded gallery for dev.", sort_order=1,
+         vr_tour_url="https://example.com/vr-tour/seed-vendor-gallery", artwork_titles=[]),
+    dict(slug="seed-first-party-gallery", title="Seed First-Party Gallery", viewer_kind="first_party",
+         description="A room generated from artwork data, for dev.", sort_order=2,
+         vr_tour_url=None,
+         artwork_titles=["Monsoon Over Marina", "Temple Tank at Dusk", "Highway Dreams",
+                         "Olive Grove at Noon", "Snow on the Kamo River", "Estuary Light"]),
+]
