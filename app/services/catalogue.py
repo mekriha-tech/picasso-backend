@@ -31,7 +31,7 @@ class InvalidCursorError(Exception):
     pass
 
 
-def _artwork_card_dict(artwork: Artwork, artist_slug: str, artist_display_name: str) -> dict:
+def artwork_card_dict(artwork: Artwork, artist_slug: str, artist_display_name: str) -> dict:
     return {
         "id": str(artwork.id),
         "slug": artwork.slug,
@@ -125,7 +125,7 @@ async def list_public_artworks(
 
     has_more = len(rows) > limit
     rows = rows[:limit]
-    items = [_artwork_card_dict(artwork, slug, name) for artwork, slug, name in rows]
+    items = [artwork_card_dict(artwork, slug, name) for artwork, slug, name in rows]
 
     next_cursor = None
     if has_more and rows:
@@ -180,7 +180,7 @@ async def get_artwork_by_slug(
         .all()
     )
 
-    card = _artwork_card_dict(artwork, artist_slug, artist_display_name)
+    card = artwork_card_dict(artwork, artist_slug, artist_display_name)
     card.update(
         {
             "description": artwork.description,
@@ -214,7 +214,7 @@ async def get_featured_artworks(db: AsyncSession) -> dict:
             .limit(3)
         )
         rows = (await db.execute(query)).all()
-        result[lt.value] = [_artwork_card_dict(a, s, n) for a, s, n in rows]
+        result[lt.value] = [artwork_card_dict(a, s, n) for a, s, n in rows]
     return result
 
 
@@ -290,7 +290,7 @@ async def get_artist_by_slug(
     if only_ids is not None:
         works_query = works_query.where(Artwork.id.in_(list(only_ids)))
     rows = (await db.execute(works_query)).all()
-    works = [_artwork_card_dict(a, s, n) for a, s, n in rows]
+    works = [artwork_card_dict(a, s, n) for a, s, n in rows]
 
     card = _artist_card_dict(artist)
     card.update(
