@@ -454,7 +454,9 @@ from the JSON API above:
     `vendor_embed` | `first_party`, vendor `https://` URL, sort order, dates, description, cover).
     `GET/POST /admin/exhibitions/{id}/edit` - edit details (the slug never changes).
   - `POST /admin/exhibitions/{id}/artworks` - replace a first-party gallery's artwork assignment
-    and optional wall positions (drafts may be assigned while curating).
+    and optional wall positions (drafts may be assigned while curating, but a published first-party
+    gallery must keep at least one published, reserved or sold artwork in the new set). The list and
+    edit pages warn when a published first-party gallery has no visible artworks.
   - `POST /admin/exhibitions/{id}/publish` / `/unpublish`. A first-party gallery needs at least one
     published, reserved or sold artwork to be published.
   - `GET/POST /admin/exhibitions/{id}/delete` - confirmation page, then hard delete (artworks are

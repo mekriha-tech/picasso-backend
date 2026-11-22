@@ -162,3 +162,43 @@ def test_publish_with_only_draft_artworks_shows_service_message(panel):
     r = panel.post(f"/admin/exhibitions/{ex_id}/publish?next=edit")
     assert f"error={quote(PUBLISH_NEEDS_ARTWORKS)}" in r.headers["location"]
     assert panel.row(ex_id).is_published is False
+
+
+EMPTY_WARNING = "Published but no visible artworks"
+
+
+def _draft_out(panel, art):
+    async def go():
+        async with panel.h.session() as s:
+            from app.models.artwork import Artwork
+
+            (await s.get(Artwork, art)).status = ArtworkStatus.draft
+            await s.commit()
+
+    panel.h.run(go())
+
+
+def _published_gallery(panel, title, artist):
+    ex_id = panel.create(title=title)
+    art = panel.h.make_artwork(artist, status=ArtworkStatus.published)
+    panel.post(f"/admin/exhibitions/{ex_id}/artworks", {"artwork": [str(art)], f"position_{art}": "1"})
+    panel.post(f"/admin/exhibitions/{ex_id}/publish")
+    assert panel.row(ex_id).is_published is True
+    return ex_id, art
+
+
+def test_list_warns_for_published_first_party_with_no_visible_artworks(panel):
+    ex_id, art = _published_gallery(panel, "Emptied", panel.h.make_artist())
+    _draft_out(panel, art)
+    assert EMPTY_WARNING in panel.c.get("/admin/exhibitions").text
+    assert EMPTY_WARNING in panel.c.get(f"/admin/exhibitions/{ex_id}/edit").text
+
+
+def test_list_no_warning_for_healthy_or_unpublished_gallery(panel):
+    artist = panel.h.make_artist()
+    _published_gallery(panel, "Healthy", artist)
+    unpublished = panel.create(title="Unpublished")
+    art = panel.h.make_artwork(artist, status=ArtworkStatus.draft)
+    panel.post(f"/admin/exhibitions/{unpublished}/artworks", {"artwork": [str(art)]})
+    assert EMPTY_WARNING not in panel.c.get("/admin/exhibitions").text
+    assert EMPTY_WARNING not in panel.c.get(f"/admin/exhibitions/{unpublished}/edit").text

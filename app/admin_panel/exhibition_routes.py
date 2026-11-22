@@ -12,6 +12,7 @@ from app.db.session import get_db
 from app.models.exhibition import Exhibition, ViewerKind
 from app.models.user import User
 from app.services import artworks as artworks_service
+from app.services.catalogue import PUBLIC_STATUSES
 from app.services import exhibition_admin as svc
 
 router = APIRouter()
@@ -70,6 +71,11 @@ async def _render_form(
     if exhibition is not None and exhibition.viewer_kind == ViewerKind.first_party.value:
         assigned = await svc.list_assignments(db, exhibition.id)
         choices = await artworks_service.list_artworks(db)
+    empty_room = False
+    if exhibition is not None and exhibition.is_published and exhibition.viewer_kind == ViewerKind.first_party.value:
+        empty_room = not any(
+            a.id in assigned and a.status in PUBLIC_STATUSES for a, _artist in choices
+        )
     return templates.TemplateResponse(
         request,
         "exhibition_form.html",
@@ -82,6 +88,7 @@ async def _render_form(
             "viewer_kinds": VIEWER_KINDS,
             "artwork_choices": choices,
             "assigned": assigned,
+            "empty_room": empty_room,
         },
         status_code=status_code,
     )

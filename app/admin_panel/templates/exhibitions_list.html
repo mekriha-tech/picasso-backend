@@ -15,7 +15,10 @@
         <td><a href="/admin/exhibitions/{{ exhibition.id }}/edit">{{ exhibition.title }}</a></td>
         <td>{{ exhibition.viewer_kind }}</td>
         <td>{{ artwork_count }}</td>
-        <td><span class="badge">{% if exhibition.is_published %}published{% else %}draft{% endif %}</span></td>
+        <td><span class="badge">{% if exhibition.is_published %}published{% else %}draft{% endif %}</span>
+          {% if exhibition.is_published and exhibition.viewer_kind == "first_party" and artwork_count == 0 %}
+            <br><span class="error">Published but no visible artworks &mdash; visitors see an empty room</span>
+          {% endif %}</td>
         <td>
           <form class="inline" method="post"
                 action="/admin/exhibitions/{{ exhibition.id }}/{% if exhibition.is_published %}unpublish{% else %}publish{% endif %}">

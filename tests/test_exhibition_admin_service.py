@@ -308,3 +308,48 @@ def test_admin_list_orders_by_sort_order_then_created_at(harness):
     harness.run(stamp())
     rows = _call(harness, svc.list_exhibitions)
     assert [r.id for r, _ in rows] == [zero.id, early.id, late.id]
+
+
+def _published_first_party(h, artist):
+    ex = _create(h, viewer_kind="first_party", vr_tour_url="")
+    art = h.make_artwork(artist, status=ArtworkStatus.published)
+    _call(h, svc.set_artworks, ex.id, {art: 1})
+    _call(h, svc.set_published, ex.id, True)
+    return ex, art
+
+
+def test_set_artworks_draft_only_refused_on_published_first_party(harness):
+    artist = harness.make_artist()
+    ex, art = _published_first_party(harness, artist)
+    draft = harness.make_artwork(artist)
+    with pytest.raises(ExhibitionValidationError) as e:
+        _call(harness, svc.set_artworks, ex.id, {draft: None})
+    assert e.value.errors == {"artworks": PUBLISH_NEEDS_ARTWORKS}
+    assert {a.artwork_id for a in _assignments(harness, ex.id)} == {art}
+
+
+@pytest.mark.parametrize("status", [ArtworkStatus.published, ArtworkStatus.reserved, ArtworkStatus.sold])
+def test_set_artworks_with_one_public_artwork_accepted_on_published_first_party(harness, status):
+    artist = harness.make_artist()
+    ex, _ = _published_first_party(harness, artist)
+    public = harness.make_artwork(artist, status=status)
+    draft = harness.make_artwork(artist)
+    _call(harness, svc.set_artworks, ex.id, {public: None, draft: None})
+    assert {a.artwork_id for a in _assignments(harness, ex.id)} == {public, draft}
+
+
+def test_set_artworks_drafts_accepted_on_unpublished_first_party(harness):
+    artist = harness.make_artist()
+    ex = _create(harness, viewer_kind="first_party", vr_tour_url="")
+    draft = harness.make_artwork(artist)
+    _call(harness, svc.set_artworks, ex.id, {draft: None})
+    assert {a.artwork_id for a in _assignments(harness, ex.id)} == {draft}
+
+
+def test_set_artworks_drafts_accepted_on_published_vendor_embed(harness):
+    artist = harness.make_artist()
+    ex = _create(harness)
+    _call(harness, svc.set_published, ex.id, True)
+    draft = harness.make_artwork(artist)
+    _call(harness, svc.set_artworks, ex.id, {draft: None})
+    assert {a.artwork_id for a in _assignments(harness, ex.id)} == {draft}

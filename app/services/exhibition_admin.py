@@ -185,7 +185,8 @@ async def set_artworks(
     db: AsyncSession, exhibition_id: uuid.UUID, positions: dict[uuid.UUID, int | None]
 ) -> None:
     """Replaces the gallery's full artwork assignment. Wall positions must be unique among the
-    non-null values. A published first-party gallery cannot be emptied."""
+    non-null values. A published first-party gallery must keep at least one publicly visible
+    artwork (public status, not deleted)."""
     exhibition = await _get(db, exhibition_id)
 
     used = [p for p in positions.values() if p is not None]
@@ -205,8 +206,22 @@ async def set_artworks(
         )
         if found != set(positions):
             raise ExhibitionValidationError({"artworks": "Choose artworks from the list."})
-    elif exhibition.is_published and exhibition.viewer_kind == ViewerKind.first_party.value:
-        raise ExhibitionValidationError({"artworks": PUBLISH_NEEDS_ARTWORKS})
+    if exhibition.is_published and exhibition.viewer_kind == ViewerKind.first_party.value:
+        visible = 0
+        if positions:
+            visible = (
+                await db.execute(
+                    select(func.count())
+                    .select_from(Artwork)
+                    .where(
+                        Artwork.id.in_(list(positions)),
+                        Artwork.deleted_at.is_(None),
+                        Artwork.status.in_(PUBLIC_STATUSES),
+                    )
+                )
+            ).scalar_one()
+        if visible == 0:
+            raise ExhibitionValidationError({"artworks": PUBLISH_NEEDS_ARTWORKS})
 
     await db.execute(
         delete(ExhibitionArtwork).where(ExhibitionArtwork.exhibition_id == exhibition_id)

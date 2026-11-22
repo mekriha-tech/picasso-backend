@@ -57,6 +57,7 @@
     <h2>Status</h2>
     <p>Current status: <span class="badge">{% if exhibition.is_published %}published{% else %}draft{% endif %}</span>
       (a gallery with our own viewer needs at least one published, reserved or sold artwork before it can be published; drafts are not shown to visitors)</p>
+    {% if empty_room %}<p class="error">Published but no visible artworks &mdash; visitors see an empty room</p>{% endif %}
     <form class="inline" method="post"
           action="/admin/exhibitions/{{ exhibition.id }}/{% if exhibition.is_published %}unpublish{% else %}publish{% endif %}?next=edit">
       {{ csrf_field(request) }}
