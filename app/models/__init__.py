@@ -7,3 +7,4 @@ from app.models.artwork import Artwork
 from app.models.artwork_image import ArtworkImage
 from app.models.testimonial import Testimonial
 from app.models.admin_audit_log import AdminAuditLog
+from app.models.exhibition import Exhibition, ExhibitionArtwork

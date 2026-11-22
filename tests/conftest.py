@@ -16,6 +16,7 @@ from app.db.session import Base
 from app.models.artist_profile import ArtistProfile
 from app.models.artwork import Artwork, ArtworkStatus, ListingType
 from app.models.artwork_image import ArtworkImage
+from app.models.exhibition import Exhibition, ExhibitionArtwork
 
 
 class DbHarness:
@@ -27,7 +28,10 @@ class DbHarness:
         self.loop = asyncio.new_event_loop()
         self.engine = create_async_engine(f"sqlite+aiosqlite:///{path}", poolclass=NullPool)
         self.maker = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
-        tables = [ArtistProfile.__table__, Artwork.__table__, ArtworkImage.__table__]
+        tables = [
+            ArtistProfile.__table__, Artwork.__table__, ArtworkImage.__table__,
+            Exhibition.__table__, ExhibitionArtwork.__table__,
+        ]
 
         async def setup():
             async with self.engine.begin() as conn:

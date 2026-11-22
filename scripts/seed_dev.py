@@ -3,7 +3,8 @@
     ALLOW_SEED=1 SEED_ADMIN_EMAIL=... SEED_ADMIN_PASSWORD=... SEED_USER_PASSWORD=... \
         python scripts/seed_dev.py
 
-Safe to re-run: users are upserted by email, artist profiles by user, artworks by slug.
+Safe to re-run: users are upserted by email, artist profiles by user, artworks by slug,
+exhibitions by slug (their artwork assignments are rewritten each run).
 Refuses to run unless ALLOW_SEED=1 and ENVIRONMENT is a known non-production value.
 Passwords come from the environment only; nothing secret lives in this repo.
 
@@ -152,12 +153,13 @@ async def seed(db, env: dict[str, str]) -> dict[str, int]:
     from app.models.artist_profile import ArtistProfile
     from app.models.artwork import Artwork, ArtworkStatus, ListingType
     from app.models.artwork_image import ArtworkImage
+    from app.models.exhibition import Exhibition, ExhibitionArtwork
     from app.models.testimonial import Testimonial
     from app.services.slugs import slugify
     import seed_dev_data as data
 
     counts = {"users_created": 0, "users_updated": 0, "artists": 0, "applicants": 0,
-              "artworks_created": 0, "artworks_updated": 0, "images": 0, "testimonials": 0}
+              "artworks_created": 0, "artworks_updated": 0, "images": 0, "testimonials": 0, "exhibitions": 0}
     now = datetime.now(timezone.utc)
 
     def tally(created: bool):
@@ -276,6 +278,27 @@ async def seed(db, env: dict[str, str]) -> dict[str, int]:
         testimonial.is_published = t["is_published"]
         counts["testimonials"] += 1
     await db.flush()
+
+    # Exhibitions are matched by slug; the artwork assignment is rewritten on every run.
+    for e in data.EXHIBITIONS:
+        exhibition = (await db.execute(select(Exhibition).where(Exhibition.slug == e["slug"]))).scalars().first()
+        if exhibition is None:
+            exhibition = Exhibition(slug=e["slug"], title=e["title"], viewer_kind=e["viewer_kind"],
+                                    vr_tour_url=e["vr_tour_url"])
+            db.add(exhibition)
+        exhibition.title = e["title"]
+        exhibition.description = e["description"]
+        exhibition.viewer_kind = e["viewer_kind"]
+        exhibition.vr_tour_url = e["vr_tour_url"]
+        exhibition.sort_order = e["sort_order"]
+        exhibition.is_published = True
+        await db.flush()
+        await db.execute(delete(ExhibitionArtwork).where(ExhibitionArtwork.exhibition_id == exhibition.id))
+        for position, title in enumerate(e["artwork_titles"], start=1):
+            artwork = (await db.execute(select(Artwork).where(Artwork.slug == slugify(title)))).scalars().first()
+            db.add(ExhibitionArtwork(exhibition_id=exhibition.id, artwork_id=artwork.id, wall_position=position))
+        await db.flush()
+        counts["exhibitions"] += 1
 
     await db.commit()
     return counts

@@ -1074,6 +1074,371 @@
         "title": "EmailCheckResponse",
         "type": "object"
       },
+      "ExhibitionArtworkOut": {
+        "properties": {
+          "artist": {
+            "$ref": "#/components/schemas/ArtistEmbed"
+          },
+          "auction": {
+            "title": "Auction",
+            "type": "null"
+          },
+          "badge": {
+            "title": "Badge",
+            "type": "string"
+          },
+          "dimensions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimensions"
+          },
+          "height_cm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Cm"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image_height_px": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Height Px"
+          },
+          "image_width_px": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Width Px"
+          },
+          "in_wishlist": {
+            "title": "In Wishlist",
+            "type": "boolean"
+          },
+          "listing_type": {
+            "title": "Listing Type",
+            "type": "string"
+          },
+          "medium": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Medium"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "primary_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Image Url"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "sold": {
+            "title": "Sold",
+            "type": "boolean"
+          },
+          "sold_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sold Price"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "texture_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texture Url"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "wall_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Position"
+          },
+          "width_cm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width Cm"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "artist",
+          "primary_image_url",
+          "medium",
+          "dimensions",
+          "year",
+          "listing_type",
+          "status",
+          "badge",
+          "price",
+          "sold",
+          "sold_price",
+          "auction",
+          "in_wishlist",
+          "wall_position",
+          "width_cm",
+          "height_cm",
+          "texture_url",
+          "image_width_px",
+          "image_height_px"
+        ],
+        "title": "ExhibitionArtworkOut",
+        "type": "object"
+      },
+      "ExhibitionCardOut": {
+        "properties": {
+          "cover_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Image Url"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "viewer_kind": {
+            "title": "Viewer Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "slug",
+          "cover_image_url",
+          "viewer_kind"
+        ],
+        "title": "ExhibitionCardOut",
+        "type": "object"
+      },
+      "ExhibitionDetailOut": {
+        "properties": {
+          "artworks": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExhibitionArtworkOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artworks"
+          },
+          "cover_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Image Url"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          },
+          "teaser": {
+            "default": false,
+            "title": "Teaser",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "viewer_kind": {
+            "title": "Viewer Kind",
+            "type": "string"
+          },
+          "vr_tour_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vr Tour Url"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "slug",
+          "cover_image_url",
+          "viewer_kind",
+          "description",
+          "starts_on",
+          "ends_on"
+        ],
+        "title": "ExhibitionDetailOut",
+        "type": "object"
+      },
+      "ExhibitionsOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExhibitionCardOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ExhibitionsOut",
+        "type": "object"
+      },
       "FeaturedArtworksOut": {
         "properties": {
           "auction": {
@@ -2941,6 +3306,74 @@
         "summary": "Revoke Session",
         "tags": [
           "Auth"
+        ]
+      }
+    },
+    "/api/v1/exhibitions": {
+      "get": {
+        "operationId": "list_exhibitions_route_api_v1_exhibitions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExhibitionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Exhibitions Route",
+        "tags": [
+          "Exhibitions"
+        ]
+      }
+    },
+    "/api/v1/exhibitions/{slug}": {
+      "get": {
+        "operationId": "get_exhibition_route_api_v1_exhibitions__slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExhibitionDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Exhibition Route",
+        "tags": [
+          "Exhibitions"
         ]
       }
     },

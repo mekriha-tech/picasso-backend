@@ -18,8 +18,8 @@ Status legend: ✅ implemented & deployed · 🚧 not built yet · ⚠️ implem
 
 Auth (including login), the artist-application submission flow, the admin approval flow
 (JSON + an HTML admin panel), and the public catalogue (artworks + artists browsing) all exist
-and are deployed. There is still no auction, order, wishlist, exhibition, or notification
-model/endpoint in the codebase.
+and are deployed, as are the public VR galleries (`/exhibitions`). There is still no auction, order,
+wishlist, or notification model/endpoint in the codebase.
 
 | Method | Path | Status |
 | --- | --- | --- |
@@ -41,13 +41,16 @@ model/endpoint in the codebase.
 | POST | `/api/v1/admin/applications/{id}/claim` · `/approve` · `/reject` | ✅ (see §3) |
 | GET | `/api/v1/admin/artworks` | ✅ (see §3) |
 | PATCH | `/api/v1/admin/artworks/{id}` | ✅ (see §3, now enforces PRD rule 10 when publishing) |
-| GET/POST | `/admin/*` (HTML admin panel, not part of the JSON API) | ✅ (see §3) |
+| GET/POST | `/admin/*` (HTML admin panel, not part of the JSON API; includes `/admin/exhibitions*` for VR galleries) | ✅ (see §3) |
 | GET | `/api/v1/artworks` | ✅ (see §3 — filtered, sorted, cursor-paginated) |
 | GET | `/api/v1/artworks/{slug}` | ✅ (see §3) |
 | GET | `/api/v1/artworks/featured` | ✅ (see §3) |
 | GET | `/api/v1/artists` | ✅ (see §3) |
 | GET | `/api/v1/artists/{slug}` | ✅ (see §3) |
-| *everything else in PRD §4.3–§4.9* | auctions, orders, wishlist, exhibitions, studio | 🚧 not built |
+| GET | `/api/v1/exhibitions` | ✅ (see §3) |
+| GET | `/api/v1/exhibitions/{slug}` | ✅ (see §3) |
+| *JSON `/api/v1/admin/exhibitions` CRUD* | galleries are managed in the HTML panel only | 🚧 not built |
+| *everything else in PRD §4.3–§4.9* | auctions, orders, wishlist, studio | 🚧 not built |
 
 Login is real now: `POST /auth/login` with `{email, password}` returns the same shape as
 `/register` (user + access token + refresh cookie). `GET /auth/me` returns the current user
@@ -444,6 +447,18 @@ from the JSON API above:
     login/refresh/access tokens and revokes all refresh tokens. Guard rails: you can't deactivate
     or demote yourself, and the last active admin can't be demoted or deactivated (an error is
     shown on the detail page). Every change is recorded in `admin_audit_log`.
+  - `GET /admin/exhibitions` - all galleries (published or not) with kind, published state and
+    count of publicly visible artworks (draft and deleted artworks are not counted); ordered by
+    `sort_order`, then `created_at`, then id.
+  - `GET/POST /admin/exhibitions/new` - create an unpublished gallery (title, `viewer_kind`
+    `vendor_embed` | `first_party`, vendor `https://` URL, sort order, dates, description, cover).
+    `GET/POST /admin/exhibitions/{id}/edit` - edit details (the slug never changes).
+  - `POST /admin/exhibitions/{id}/artworks` - replace a first-party gallery's artwork assignment
+    and optional wall positions (drafts may be assigned while curating).
+  - `POST /admin/exhibitions/{id}/publish` / `/unpublish`. A first-party gallery needs at least one
+    published, reserved or sold artwork to be published.
+  - `GET/POST /admin/exhibitions/{id}/delete` - confirmation page, then hard delete (artworks are
+    untouched).
   - **CSRF:** every POST form in the panel (except login) carries a `csrf_token` hidden field tied
     to the session cookie; a missing or wrong token gets `403`.
 
@@ -577,6 +592,75 @@ ordered by `sort_order` ascending (ties broken by id). No params, no paging. Sen
   `author_role` and `avatar_url` may be `null`. An empty table is `200 {"items": []}`, so hide the
   block when `items` is empty.
 
+#### `GET /api/v1/exhibitions`
+
+The VR galleries ("exhibitions" in the API). Each gallery is one of two kinds, `viewer_kind`:
+`vendor_embed` (an external iframe, e.g. Artsteps) or `first_party` (Picasso's own 3D room,
+rendered by the frontend from artwork data). Kinds are mixed freely in one list. **Public, no
+auth needed.** Returns only `is_published = true` galleries, ordered by `sort_order` ascending
+(ties broken by `created_at`, then id; the admin panel uses the same order): render one button per item, in this order. No params, no paging.
+- `200` →
+  ```jsonc
+  { "items": [
+    { "id": "uuid", "title": "Monsoon Light", "slug": "monsoon-light",
+      "cover_image_url": "https://...", "viewer_kind": "vendor_embed" }
+  ] }
+  ```
+  `cover_image_url` may be `null`. An empty table is `200 {"items": []}`. Treat `viewer_kind` as an
+  open set: unknown values must render a safe fallback, not crash.
+
+#### `GET /api/v1/exhibitions/{slug}`
+
+One published gallery. The card fields above plus `description`, `starts_on` and `ends_on`
+(`YYYY-MM-DD` or `null`), plus **exactly one** of `vr_tour_url` or `artworks` depending on
+`viewer_kind` (the other key is absent, not `null`), plus a `teaser` flag.
+- `200`, `viewer_kind: "vendor_embed"` -> put `vr_tour_url` in an iframe:
+  ```jsonc
+  { "id": "uuid", "title": "Monsoon Light", "slug": "monsoon-light",
+    "cover_image_url": "https://...", "viewer_kind": "vendor_embed",
+    "description": "...", "starts_on": "2026-12-01", "ends_on": null,
+    "vr_tour_url": "https://www.artsteps.com/embed/...", "teaser": false }
+  ```
+- `200`, `viewer_kind: "first_party"` -> build the 3D room from `artworks`:
+  ```jsonc
+  { "id": "uuid", "title": "The Open Room", "slug": "the-open-room",
+    "cover_image_url": null, "viewer_kind": "first_party",
+    "description": null, "starts_on": null, "ends_on": null,
+    "artworks": [
+      { "id": "uuid", "slug": "monsoon-over-marina", "title": "Monsoon Over Marina",
+        "artist": { "slug": "meera-iyer", "display_name": "Meera Iyer" },
+        "primary_image_url": "https://...", "medium": "Oil on canvas",
+        "dimensions": "36 x 24 inches", "year": 2023, "listing_type": "sale",
+        "status": "published", "badge": "For Sale", "price": "185000.00", "sold": false,
+        "sold_price": null, "auction": null, "in_wishlist": false,
+        "wall_position": 1, "width_cm": "91.44", "height_cm": "60.96",
+        "texture_url": "https://...", "image_width_px": 1000, "image_height_px": 667 }
+    ],
+    "teaser": false }
+  ```
+  - `artworks` use the artwork card shape (§3 Public catalogue) plus `wall_position`, `width_cm`,
+    `height_cm` (strings or `null`), `texture_url` and `image_width_px` / `image_height_px`
+    (integers or `null`, for aspect ratio).
+  - **`wall_position` orders the artworks**: ascending, `null` last, hang them along the walls in
+    this order. It is an ordering key, not a coordinate or a unique slot.
+  - `texture_url` is the image to load as the painting texture (a lighter preview when one exists,
+    otherwise the full image, otherwise `primary_image_url`); it may be `null`.
+  - Only artworks with `status` in `published`, `reserved`, `sold` are included.
+  - **There is no buy-link field.** Build the buy page URL from the artwork `slug` using your own
+    routes (e.g. `/artworks/{slug}`). Show `price` (string, never a float; format it yourself),
+    `status`, `badge` and `sold` in the click-a-painting panel.
+- **Logged-out teaser**: this endpoint is subject to the same teaser as the catalogue (above), but
+  only for `first_party` galleries. Without a valid access token, a `first_party` gallery's
+  `artworks` contains only teaser works (so it can be shorter than the logged-in list, even empty)
+  and the response has `"teaser": true`. Logged-in visitors get every artwork and
+  `"teaser": false`. `vendor_embed` galleries are never limited and always return
+  `"teaser": false`, logged in or not. Branch on `teaser` only for first-party galleries, to show
+  "Log in to see the full gallery".
+- **Send the access token when logged in.** The route is public, but a request without a token is
+  treated as logged out. An expired or invalid bearer token returns `401 {"detail": "Not
+  authenticated"}` rather than falling back to anonymous: refresh the token and retry.
+- `404` -> `{"detail": "Exhibition not found"}` (unknown slug, or the gallery is not published)
+
 ---
 
 ## 4. Priority build plan
@@ -627,7 +711,7 @@ for what's actually done and for the Bearer-auth gap above.
 
 ### Phase 6 — Everything else
 21. `/me/bids`, `/me/orders`, `/me/wishlist`, `/me/profile`, `/me/notifications`
-22. `/exhibitions` (`/testimonials` is done)
+22. `/exhibitions` ✅ done (`/testimonials` is done too)
 23. Remaining notification jobs (outbid, ending-soon reminders)
 
 ---
@@ -652,7 +736,9 @@ for what's actually done and for the Bearer-auth gap above.
   artist to build against on the live deployment; `sale`/`auction` listings and price-sorted
   results will stay empty until Studio work lands, so don't build the "for sale" / "live auction"
   sections expecting real data yet — `display`-listing browsing is what's real today.
-  `GET /testimonials` is real now (see §3); `/exhibitions` still doesn't exist (Phase 6).
+  `GET /testimonials` is real now (see §3); `/exhibitions` and `/exhibitions/{slug}` are real too (see §3): one button per gallery from the
+  list, vendor galleries render `vr_tour_url` in an iframe, first-party ones render a 3D room from
+  `artworks`.
 - Social login buttons (Apple/Google/Facebook), if they're in your designs, aren't backed by
   anything — there's no OAuth flow in the PRD or this codebase. Worth a separate conversation
   before wiring those up to anything real.

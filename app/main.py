@@ -3,12 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 from app.core.config import settings
-from app.api.v1 import auth, artist_applications, admin, admin_images, catalogue, testimonials
+from app.api.v1 import auth, artist_applications, admin, admin_images, catalogue, testimonials, exhibitions
 from app.admin_panel.auth import AdminAuthRequired
 from app.admin_panel import login_routes
 from app.admin_panel import application_routes
 from app.admin_panel import artwork_routes
 from app.admin_panel import user_routes
+from app.admin_panel import exhibition_routes
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -46,10 +47,12 @@ app.include_router(admin.router, prefix=settings.API_V1_PREFIX, tags=["Admin"])
 app.include_router(admin_images.router, prefix=settings.API_V1_PREFIX, tags=["Admin"])
 app.include_router(catalogue.router, prefix=settings.API_V1_PREFIX, tags=["Catalogue"])
 app.include_router(testimonials.router, prefix=settings.API_V1_PREFIX, tags=["Testimonials"])
+app.include_router(exhibitions.router, prefix=settings.API_V1_PREFIX, tags=["Exhibitions"])
 app.include_router(login_routes.router, prefix="/admin", tags=["Admin Panel"], include_in_schema=False)
 app.include_router(application_routes.router, prefix="/admin", tags=["Admin Panel"], include_in_schema=False)
 app.include_router(artwork_routes.router, prefix="/admin", tags=["Admin Panel"], include_in_schema=False)
 app.include_router(user_routes.router, prefix="/admin", tags=["Admin Panel"], include_in_schema=False)
+app.include_router(exhibition_routes.router, prefix="/admin", tags=["Admin Panel"], include_in_schema=False)
 
 @app.get("/health", tags=["Health"])
 async def health_check():
