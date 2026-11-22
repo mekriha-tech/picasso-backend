@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.admin_panel.auth import get_session_admin_user
 from app.db.session import get_db
 from app.main import app
+from app.models.artwork import ArtworkStatus
 from app.models.exhibition import Exhibition, ExhibitionArtwork
 from app.services.exhibition_admin import PUBLISH_NEEDS_ARTWORKS
 
@@ -88,10 +89,11 @@ def test_create_vendor_gallery_requires_url_and_shows_field_error(panel):
 
 def test_create_first_party_then_assign_artworks_then_publish(panel):
     ex_id = panel.create()
-    art1 = panel.h.make_artwork(panel.h.make_artist("Elena Frost"), title="Dawn")
-    art2 = panel.h.make_artwork(panel.h.make_artist("Other"), title="Dusk")
+    art1 = panel.h.make_artwork(panel.h.make_artist("Elena Frost"), title="Dawn", status=ArtworkStatus.published)
+    art2 = panel.h.make_artwork(panel.h.make_artist("Other"), title="Dusk", status=ArtworkStatus.draft)
     page = panel.c.get(f"/admin/exhibitions/{ex_id}/edit").text
     assert "Dawn" in page and "Dusk" in page and "Elena Frost" in page
+    assert "published" in page and "draft" in page  # status shown next to each artwork
 
     r = panel.post(
         f"/admin/exhibitions/{ex_id}/artworks",
@@ -149,3 +151,14 @@ def test_huge_wall_position_redirects_with_error(panel):
     )
     assert r.status_code == 303 and "error=" in r.headers["location"]
     assert panel.assigned(ex_id) == {}
+
+
+def test_publish_with_only_draft_artworks_shows_service_message(panel):
+    from urllib.parse import quote
+
+    ex_id = panel.create()
+    art = panel.h.make_artwork(panel.h.make_artist(), status=ArtworkStatus.draft)
+    panel.post(f"/admin/exhibitions/{ex_id}/artworks", {"artwork": [str(art)], f"position_{art}": "1"})
+    r = panel.post(f"/admin/exhibitions/{ex_id}/publish?next=edit")
+    assert f"error={quote(PUBLISH_NEEDS_ARTWORKS)}" in r.headers["location"]
+    assert panel.row(ex_id).is_published is False

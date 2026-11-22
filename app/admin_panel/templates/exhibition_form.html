@@ -56,7 +56,7 @@
   {% if exhibition %}
     <h2>Status</h2>
     <p>Current status: <span class="badge">{% if exhibition.is_published %}published{% else %}draft{% endif %}</span>
-      (a gallery with our own viewer needs at least one artwork before it can be published)</p>
+      (a gallery with our own viewer needs at least one published, reserved or sold artwork before it can be published; drafts are not shown to visitors)</p>
     <form class="inline" method="post"
           action="/admin/exhibitions/{{ exhibition.id }}/{% if exhibition.is_published %}unpublish{% else %}publish{% endif %}?next=edit">
       {{ csrf_field(request) }}
@@ -73,7 +73,7 @@
             {% for artwork, artist_name in artwork_choices %}
               <tr>
                 <td><input type="checkbox" name="artwork" value="{{ artwork.id }}" {% if artwork.id in assigned %}checked{% endif %}></td>
-                <td>{{ artwork.title }}</td>
+                <td>{{ artwork.title }} <span class="badge">{{ artwork.status.value }}</span></td>
                 <td>{{ artist_name }}</td>
                 <td><input type="text" inputmode="numeric" name="position_{{ artwork.id }}"
                            value="{% if assigned[artwork.id] is not none %}{{ assigned[artwork.id] }}{% endif %}"></td>

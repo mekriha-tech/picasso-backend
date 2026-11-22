@@ -24,7 +24,7 @@ async def list_published_exhibitions(db: AsyncSession) -> list[dict]:
     rows = await db.execute(
         select(Exhibition)
         .where(Exhibition.is_published.is_(True))
-        .order_by(Exhibition.sort_order, Exhibition.id)
+        .order_by(Exhibition.sort_order, Exhibition.created_at, Exhibition.id)
     )
     return [_card(ex) for ex in rows.scalars().all()]
 

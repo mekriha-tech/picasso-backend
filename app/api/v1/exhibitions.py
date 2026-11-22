@@ -32,5 +32,6 @@ async def get_exhibition_route(
     exhibition = await exhibitions_service.get_published_exhibition(db, slug, only_ids=only_ids)
     if exhibition is None:
         raise HTTPException(status_code=404, detail="Exhibition not found")
-    exhibition["teaser"] = user is None
+    # The teaser only applies to first-party galleries; vendor galleries are never limited.
+    exhibition["teaser"] = user is None and exhibition["viewer_kind"] == "first_party"
     return exhibition

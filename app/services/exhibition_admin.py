@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.artwork import Artwork
 from app.models.exhibition import Exhibition, ExhibitionArtwork, ViewerKind
+from app.services.catalogue import PUBLIC_STATUSES
 from app.services.slugs import generate_unique_slug, slugify
 
 PUBLISH_NEEDS_ARTWORKS = "Add at least one artwork before publishing a first-party gallery."
@@ -46,7 +47,7 @@ def _iso_date(raw: dict, name: str, errors: dict) -> date | None:
 
 
 def _has_web_host(url: str) -> bool:
-    if not url.lower().startswith(("https://", "http://")):
+    if not url.lower().startswith("https://"):  # http:// is blocked as mixed content in the iframe
         return False
     try:
         return bool(urlsplit(url).hostname)
@@ -116,7 +117,11 @@ async def _artwork_count(db: AsyncSession, exhibition_id: uuid.UUID) -> int:
             select(func.count())
             .select_from(ExhibitionArtwork)
             .join(Artwork, Artwork.id == ExhibitionArtwork.artwork_id)
-            .where(ExhibitionArtwork.exhibition_id == exhibition_id, Artwork.deleted_at.is_(None))
+            .where(
+                ExhibitionArtwork.exhibition_id == exhibition_id,
+                Artwork.deleted_at.is_(None),
+                Artwork.status.in_(PUBLIC_STATUSES),
+            )
         )
     ).scalar_one()
 
@@ -229,18 +234,18 @@ async def get_exhibition(db: AsyncSession, exhibition_id: uuid.UUID) -> Exhibiti
 
 
 async def list_exhibitions(db: AsyncSession) -> list[tuple[Exhibition, int]]:
-    """Every gallery (published or not) with its count of live assigned artworks."""
+    """Every gallery (published or not) with its count of assigned artworks that are publicly visible (not draft, not deleted)."""
     counts = (
         select(ExhibitionArtwork.exhibition_id, func.count().label("n"))
         .join(Artwork, Artwork.id == ExhibitionArtwork.artwork_id)
-        .where(Artwork.deleted_at.is_(None))
+        .where(Artwork.deleted_at.is_(None), Artwork.status.in_(PUBLIC_STATUSES))
         .group_by(ExhibitionArtwork.exhibition_id)
         .subquery()
     )
     rows = await db.execute(
         select(Exhibition, func.coalesce(counts.c.n, 0))
         .outerjoin(counts, counts.c.exhibition_id == Exhibition.id)
-        .order_by(Exhibition.sort_order, Exhibition.created_at.desc())
+        .order_by(Exhibition.sort_order, Exhibition.created_at, Exhibition.id)
     )
     return [(ex, int(n)) for ex, n in rows.all()]
 

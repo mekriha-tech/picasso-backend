@@ -511,7 +511,7 @@ The prototype's countdown is client-side from `ends_at`; keep that, but treat th
 | POST | `/admin/applications/{id}/reject` | `{reason}` — emailed to the user |
 | GET/PATCH | `/admin/artworks` | Moderation |
 | POST | `/admin/auctions/{id}/cancel` · `/admin/bids/{id}/retract` | Rules 14, 9 |
-| CRUD | `/admin/exhibitions` · `/admin/testimonials` | Content |
+| CRUD | `/admin/exhibitions` · `/admin/testimonials` | Content. **Not built as JSON:** galleries are managed through the HTML admin panel (`/admin/exhibitions*`, see `docs/API_REFERENCE.md`); testimonials have no admin yet |
 
 ### 4.9 Background jobs
 | Job | Schedule | Does |

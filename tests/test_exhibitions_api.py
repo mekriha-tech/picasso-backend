@@ -165,3 +165,25 @@ def test_texture_url_prefers_preview(api):
     assert arts[str(a2)]["texture_url"] == "https://c/full2.jpg"
     assert arts[str(a3)]["texture_url"] == "https://c/legacy3.jpg"
     assert arts[str(a3)]["image_width_px"] is None
+
+
+def test_teaser_flag_by_kind_and_login(api):
+    exhibition(api, "v", kind="vendor_embed")
+    ex = exhibition(api, "f", kind="first_party")
+    artwork(api, ex, 1)
+    assert api.get("/api/v1/exhibitions/v").json()["teaser"] is False
+    assert api.get("/api/v1/exhibitions/f").json()["teaser"] is True
+    app.dependency_overrides[get_optional_user] = lambda: object()
+    assert api.get("/api/v1/exhibitions/v").json()["teaser"] is False
+    assert api.get("/api/v1/exhibitions/f").json()["teaser"] is False
+
+
+def test_list_ties_on_sort_order_break_by_created_at_then_id(api):
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    # slugs/ids chosen so neither slug order nor creation order matches by accident
+    exhibition(api, "late", sort_order=1, created_at=base + timedelta(days=2))
+    exhibition(api, "early", sort_order=1, created_at=base)
+    exhibition(api, "mid", sort_order=1, created_at=base + timedelta(days=1))
+    exhibition(api, "first", sort_order=0, created_at=base + timedelta(days=9))
+    items = api.get("/api/v1/exhibitions").json()["items"]
+    assert [i["slug"] for i in items] == ["first", "early", "mid", "late"]

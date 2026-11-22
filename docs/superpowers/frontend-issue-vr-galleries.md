@@ -13,7 +13,16 @@ from artwork data, where visitors can click a painting and reach its buy page).
 Contract: `docs/API_REFERENCE.md` ("Exhibitions") and `docs/openapi.json` in picasso-backend.
 Design: `docs/superpowers/specs/2026-11-22-vr-galleries-design.md` (backend repo).
 
-## API (all public, no auth needed)
+## API (both endpoints are public; the token matters on the detail call)
+
+- `GET /exhibitions` needs no auth.
+- `GET /exhibitions/{slug}` is public, but when the user is logged in you must send their access
+  token (`Authorization: Bearer ...`). Without it the server treats them as logged out and returns
+  the teaser room. An expired or invalid token returns `401 {"detail":"Not authenticated"}` (it
+  does not fall back to anonymous), so refresh the token and retry.
+- `teaser` is `true` only for logged-out callers of a `first_party` gallery. Vendor galleries
+  always return `teaser: false`, so the generic page must not branch on it for vendor galleries.
+
 
 `GET /api/v1/exhibitions`, published galleries ordered by `sort_order`, one button each
 ("Visit VR gallery 1", "Visit VR gallery 2", ...):
@@ -61,7 +70,7 @@ Notes:
 - `texture_url` is the image to load as the painting texture; `image_width_px` / `image_height_px`
   give the aspect ratio; `width_cm` / `height_cm` give physical size when known (all may be `null`).
 - Logged-out teaser: without a token, a first-party gallery's `artworks` is limited to teaser works
-  and `"teaser": true`. Show a "Log in to see the full gallery" prompt when `teaser` is true.
+  and `"teaser": true`. Show a "Log in to see the full gallery" prompt when `teaser` is true (first-party only; vendor galleries always return false).
 
 ## Frontend design (organization is a requirement)
 

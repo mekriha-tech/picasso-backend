@@ -4,7 +4,7 @@ import uuid
 import pytest
 from sqlalchemy import select
 
-from app.models.artwork import Artwork
+from app.models.artwork import Artwork, ArtworkStatus
 from app.models.exhibition import Exhibition, ExhibitionArtwork
 from app.services import exhibition_admin as svc
 from app.services.exhibition_admin import ExhibitionValidationError, PUBLISH_NEEDS_ARTWORKS
@@ -48,10 +48,16 @@ def _assignments(h, ex_id):
     return h.run(go())
 
 
-@pytest.mark.parametrize("url", ["javascript:alert(1)", "data:text/html,x", "ftp://x"])
+@pytest.mark.parametrize("url", ["javascript:alert(1)", "data:text/html,x", "ftp://x", "http://my.artsteps.com/x"])
 def test_vendor_url_scheme_rejected(url):
     with pytest.raises(ExhibitionValidationError) as e:
         svc.clean_exhibition_form(_form(vr_tour_url=url))
+    assert e.value.errors["vr_tour_url"] == "Enter a full web address starting with https://."
+
+
+def test_vendor_url_http_rejected_with_fixed_copy():
+    with pytest.raises(ExhibitionValidationError) as e:
+        svc.clean_exhibition_form(_form(vr_tour_url="http://my.artsteps.com/x"))
     assert e.value.errors["vr_tour_url"] == "Enter a full web address starting with https://."
 
 
@@ -116,14 +122,14 @@ def test_publish_vendor_without_artworks_allowed(harness):
 
 def test_publish_first_party_with_artworks_allowed(harness):
     ex = _create(harness, viewer_kind="first_party", vr_tour_url="")
-    art = harness.make_artwork(harness.make_artist())
+    art = harness.make_artwork(harness.make_artist(), status=ArtworkStatus.published)
     _call(harness, svc.set_artworks, ex.id, {art: None})
     assert _call(harness, svc.set_published, ex.id, True).is_published is True
 
 
 def test_unpublish_always_allowed(harness):
     ex = _create(harness, viewer_kind="first_party", vr_tour_url="")
-    art = harness.make_artwork(harness.make_artist())
+    art = harness.make_artwork(harness.make_artist(), status=ArtworkStatus.published)
     _call(harness, svc.set_artworks, ex.id, {art: None})
     _call(harness, svc.set_published, ex.id, True)
     assert _call(harness, svc.set_published, ex.id, False).is_published is False
@@ -169,7 +175,7 @@ def test_set_artworks_unknown_artwork_rejected(harness):
 
 def test_set_artworks_cannot_empty_published_first_party(harness):
     ex = _create(harness, viewer_kind="first_party", vr_tour_url="")
-    art = harness.make_artwork(harness.make_artist())
+    art = harness.make_artwork(harness.make_artist(), status=ArtworkStatus.published)
     _call(harness, svc.set_artworks, ex.id, {art: None})
     _call(harness, svc.set_published, ex.id, True)
     with pytest.raises(ExhibitionValidationError):
@@ -197,7 +203,7 @@ def test_delete_removes_assignments(harness):
     assert harness.run(fetch()) is not None
 
 
-@pytest.mark.parametrize("url", ["https://", "http://", "https:///path", "HTTPS://  "])
+@pytest.mark.parametrize("url", ["https://", "https:///path", "HTTPS://  "])
 def test_vendor_url_needs_a_host(url):
     with pytest.raises(ExhibitionValidationError) as e:
         svc.clean_exhibition_form(_form(vr_tour_url=url))
@@ -212,7 +218,7 @@ def test_sort_order_unicode_digit_is_a_form_error_not_a_crash():
 
 def test_publish_ignores_soft_deleted_artworks(harness):
     ex = _create(harness, viewer_kind="first_party", vr_tour_url="")
-    art = harness.make_artwork(harness.make_artist())
+    art = harness.make_artwork(harness.make_artist(), status=ArtworkStatus.published)
     _call(harness, svc.set_artworks, ex.id, {art: None})
 
     async def soft_delete():
@@ -227,7 +233,7 @@ def test_publish_ignores_soft_deleted_artworks(harness):
     assert PUBLISH_NEEDS_ARTWORKS in e.value.errors.values()
 
 
-@pytest.mark.parametrize("url", ["https://[", "http://[::1", "https://@", "https://:80"])
+@pytest.mark.parametrize("url", ["https://[", "https://[::1", "https://@", "https://:80"])
 def test_vendor_url_malformed_authority_is_a_form_error(url):
     with pytest.raises(ExhibitionValidationError) as e:
         svc.clean_exhibition_form(_form(vr_tour_url=url))
@@ -238,3 +244,67 @@ def test_sort_order_huge_digit_string_is_a_form_error():
     with pytest.raises(ExhibitionValidationError) as e:
         svc.clean_exhibition_form(_form(sort_order="9" * 5000))
     assert "sort_order" in e.value.errors
+
+
+def test_publish_with_only_draft_artworks_refused(harness):
+    ex = _create(harness, viewer_kind="first_party", vr_tour_url="")
+    draft = harness.make_artwork(harness.make_artist())  # defaults to draft
+    _call(harness, svc.set_artworks, ex.id, {draft: None})  # curating with drafts is allowed
+    with pytest.raises(ExhibitionValidationError) as e:
+        _call(harness, svc.set_published, ex.id, True)
+    assert PUBLISH_NEEDS_ARTWORKS in e.value.errors.values()
+    assert _get(harness, ex.id).is_published is False
+
+
+@pytest.mark.parametrize("status", [ArtworkStatus.published, ArtworkStatus.reserved, ArtworkStatus.sold])
+def test_publish_counts_each_public_status(harness, status):
+    ex = _create(harness, viewer_kind="first_party", vr_tour_url="")
+    art = harness.make_artwork(harness.make_artist(), status=status)
+    _call(harness, svc.set_artworks, ex.id, {art: None})
+    assert _call(harness, svc.set_published, ex.id, True).is_published is True
+
+
+def test_update_published_first_party_left_with_no_public_artworks_refused(harness):
+    ex = _create(harness, viewer_kind="first_party", vr_tour_url="")
+    art = harness.make_artwork(harness.make_artist(), status=ArtworkStatus.published)
+    _call(harness, svc.set_artworks, ex.id, {art: None})
+    _call(harness, svc.set_published, ex.id, True)
+
+    async def to_draft():
+        async with harness.session() as s:
+            (await s.get(Artwork, art)).status = ArtworkStatus.draft
+            await s.commit()
+
+    harness.run(to_draft())
+    clean = svc.clean_exhibition_form(_form(viewer_kind="first_party", vr_tour_url="", title="New"))
+    with pytest.raises(ExhibitionValidationError) as e:
+        _call(harness, svc.update_exhibition, ex.id, clean)
+    assert PUBLISH_NEEDS_ARTWORKS in e.value.errors.values()
+    assert _get(harness, ex.id).title == "Spring Show"
+
+
+def test_admin_list_count_ignores_drafts_and_deleted(harness):
+    ex = _create(harness, viewer_kind="first_party", vr_tour_url="")
+    artist = harness.make_artist()
+    pub = harness.make_artwork(artist, status=ArtworkStatus.published)
+    sold = harness.make_artwork(artist, status=ArtworkStatus.sold)
+    draft = harness.make_artwork(artist)
+    _call(harness, svc.set_artworks, ex.id, {pub: None, sold: None, draft: None})
+    rows = _call(harness, svc.list_exhibitions)
+    assert [(r.id, n) for r, n in rows if r.id == ex.id] == [(ex.id, 2)]
+
+
+def test_admin_list_orders_by_sort_order_then_created_at(harness):
+    late = _create(harness, title="Late", sort_order="5")
+    early = _create(harness, title="Early", sort_order="5")
+    zero = _create(harness, title="Zero", sort_order="0")
+
+    async def stamp():
+        async with harness.session() as s:
+            for ex, day in ((early, 1), (late, 3), (zero, 9)):
+                (await s.get(Exhibition, ex.id)).created_at = datetime(2026, 1, day, tzinfo=timezone.utc)
+            await s.commit()
+
+    harness.run(stamp())
+    rows = _call(harness, svc.list_exhibitions)
+    assert [r.id for r, _ in rows] == [zero.id, early.id, late.id]

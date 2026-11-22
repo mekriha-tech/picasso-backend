@@ -41,7 +41,7 @@ wishlist, or notification model/endpoint in the codebase.
 | POST | `/api/v1/admin/applications/{id}/claim` · `/approve` · `/reject` | ✅ (see §3) |
 | GET | `/api/v1/admin/artworks` | ✅ (see §3) |
 | PATCH | `/api/v1/admin/artworks/{id}` | ✅ (see §3, now enforces PRD rule 10 when publishing) |
-| GET/POST | `/admin/*` (HTML admin panel, not part of the JSON API) | ✅ (see §3) |
+| GET/POST | `/admin/*` (HTML admin panel, not part of the JSON API; includes `/admin/exhibitions*` for VR galleries) | ✅ (see §3) |
 | GET | `/api/v1/artworks` | ✅ (see §3 — filtered, sorted, cursor-paginated) |
 | GET | `/api/v1/artworks/{slug}` | ✅ (see §3) |
 | GET | `/api/v1/artworks/featured` | ✅ (see §3) |
@@ -49,6 +49,7 @@ wishlist, or notification model/endpoint in the codebase.
 | GET | `/api/v1/artists/{slug}` | ✅ (see §3) |
 | GET | `/api/v1/exhibitions` | ✅ (see §3) |
 | GET | `/api/v1/exhibitions/{slug}` | ✅ (see §3) |
+| *JSON `/api/v1/admin/exhibitions` CRUD* | galleries are managed in the HTML panel only | 🚧 not built |
 | *everything else in PRD §4.3–§4.9* | auctions, orders, wishlist, studio | 🚧 not built |
 
 Login is real now: `POST /auth/login` with `{email, password}` returns the same shape as
@@ -446,6 +447,18 @@ from the JSON API above:
     login/refresh/access tokens and revokes all refresh tokens. Guard rails: you can't deactivate
     or demote yourself, and the last active admin can't be demoted or deactivated (an error is
     shown on the detail page). Every change is recorded in `admin_audit_log`.
+  - `GET /admin/exhibitions` - all galleries (published or not) with kind, published state and
+    count of publicly visible artworks (draft and deleted artworks are not counted); ordered by
+    `sort_order`, then `created_at`, then id.
+  - `GET/POST /admin/exhibitions/new` - create an unpublished gallery (title, `viewer_kind`
+    `vendor_embed` | `first_party`, vendor `https://` URL, sort order, dates, description, cover).
+    `GET/POST /admin/exhibitions/{id}/edit` - edit details (the slug never changes).
+  - `POST /admin/exhibitions/{id}/artworks` - replace a first-party gallery's artwork assignment
+    and optional wall positions (drafts may be assigned while curating).
+  - `POST /admin/exhibitions/{id}/publish` / `/unpublish`. A first-party gallery needs at least one
+    published, reserved or sold artwork to be published.
+  - `GET/POST /admin/exhibitions/{id}/delete` - confirmation page, then hard delete (artworks are
+    untouched).
   - **CSRF:** every POST form in the panel (except login) carries a `csrf_token` hidden field tied
     to the session cookie; a missing or wrong token gets `403`.
 
@@ -585,7 +598,7 @@ The VR galleries ("exhibitions" in the API). Each gallery is one of two kinds, `
 `vendor_embed` (an external iframe, e.g. Artsteps) or `first_party` (Picasso's own 3D room,
 rendered by the frontend from artwork data). Kinds are mixed freely in one list. **Public, no
 auth needed.** Returns only `is_published = true` galleries, ordered by `sort_order` ascending
-(ties broken by id): render one button per item, in this order. No params, no paging.
+(ties broken by `created_at`, then id; the admin panel uses the same order): render one button per item, in this order. No params, no paging.
 - `200` →
   ```jsonc
   { "items": [
@@ -636,12 +649,16 @@ One published gallery. The card fields above plus `description`, `starts_on` and
   - **There is no buy-link field.** Build the buy page URL from the artwork `slug` using your own
     routes (e.g. `/artworks/{slug}`). Show `price` (string, never a float; format it yourself),
     `status`, `badge` and `sold` in the click-a-painting panel.
-- **Logged-out teaser**: this endpoint is subject to the same teaser as the catalogue (above).
-  Without a valid access token, a `first_party` gallery's `artworks` contains only teaser works
-  (so it can be shorter than the logged-in list, even empty) and the response has `"teaser": true`.
-  Logged-in visitors get every artwork and `"teaser": false`. `vendor_embed` galleries are not
-  filtered (there is no artwork list), but still carry `teaser` (`true` when logged out). Branch
-  on `teaser` to show "Log in to see the full gallery".
+- **Logged-out teaser**: this endpoint is subject to the same teaser as the catalogue (above), but
+  only for `first_party` galleries. Without a valid access token, a `first_party` gallery's
+  `artworks` contains only teaser works (so it can be shorter than the logged-in list, even empty)
+  and the response has `"teaser": true`. Logged-in visitors get every artwork and
+  `"teaser": false`. `vendor_embed` galleries are never limited and always return
+  `"teaser": false`, logged in or not. Branch on `teaser` only for first-party galleries, to show
+  "Log in to see the full gallery".
+- **Send the access token when logged in.** The route is public, but a request without a token is
+  treated as logged out. An expired or invalid bearer token returns `401 {"detail": "Not
+  authenticated"}` rather than falling back to anonymous: refresh the token and retry.
 - `404` -> `{"detail": "Exhibition not found"}` (unknown slug, or the gallery is not published)
 
 ---
